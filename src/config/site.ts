@@ -1,0 +1,21 @@
+export const siteConfig = {
+  name: "CRM + NFVS",
+  description: "Enterprise-grade Internal Business Management Platform",
+  version: "0.1.0-foundation",
+  defaultCurrency: "INR",
+  defaultTimezone: "Asia/Kolkata",
+  navigation: [
+    { title: "Overview", href: "/app/overview", icon: "LayoutDashboard" },
+    { title: "HR Management", href: "/app/hr", icon: "Users" },
+    { title: "CRM", href: "/app/crm", icon: "Briefcase" },
+    { title: "Operations", href: "/app/operations", icon: "Layers" },
+    { title: "Finance", href: "/app/finance", icon: "IndianRupee" },
+    { title: "Products & Inventory", href: "/app/inventory", icon: "Package" },
+    { title: "Legal & Compliance", href: "/app/legal", icon: "Scale" },
+    { title: "Reports & Analytics", href: "/app/reports", icon: "BarChart3" },
+    { title: "Calendar", href: "/app/calendar", icon: "Calendar" },
+    { title: "Notifications", href: "/app/notifications", icon: "Bell" },
+    { title: "Audit Trail", href: "/app/audit", icon: "ShieldAlert" },
+    { title: "Settings", href: "/app/settings", icon: "Settings" },
+  ],
+};

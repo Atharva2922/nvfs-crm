@@ -1,26 +1,240 @@
 @import "tailwindcss";
 
+@variant dark (&:where(.dark, .dark *));
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* Enterprise Royal Blue & Gold Theme Tokens (Default Dark) */
+  --background: #070b16; /* Deep Royal Midnight */
+  --foreground: #f8fafc;
+  
+  --surface: #0c1322; /* Royal Slate Surface */
+  --surface-raised: #121c33;
+  --surface-hover: #192747;
+  --surface-active: #20335e;
+  
+  --border-subtle: #16233d;
+  --border-default: #1e3258;
+  --border-strong: #2c477d;
+  
+  --primary: #2563eb; /* Royal Blue */
+  --primary-hover: #1d4ed8;
+  --primary-foreground: #ffffff;
+  
+  --brand-royal: #1e40af;
+  --brand-blue: #3b82f6;
+  --brand-gold: #d4af37; /* Metallic Imperial Gold */
+  --brand-gold-hover: #b89628;
+  --brand-gold-surface: rgba(212, 175, 55, 0.12);
+  --brand-gold-border: rgba(212, 175, 55, 0.35);
+  
+  --success: #10b981;
+  --success-surface: rgba(16, 185, 129, 0.1);
+  --warning: #f59e0b;
+  --warning-surface: rgba(245, 158, 11, 0.12);
+  --danger: #ef4444;
+  --danger-surface: rgba(239, 68, 68, 0.1);
+  --info: #3b82f6;
+  --info-surface: rgba(59, 130, 246, 0.12);
+
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
+  
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html.light {
+  --background: #f8fafc;
+  --foreground: #091224;
+  
+  --surface: #ffffff;
+  --surface-raised: #f1f5fb;
+  --surface-hover: #e2eaf6;
+  --surface-active: #cbdcf2;
+  
+  --border-subtle: #e2e8f2;
+  --border-default: #cad7e8;
+  --border-strong: #9bb0cd;
+  
+  --primary: #1d4ed8; /* Deep Royal Blue */
+  --primary-hover: #1e40af;
+  --primary-foreground: #ffffff;
+  
+  --brand-royal: #1e40af;
+  --brand-blue: #2563eb;
+  --brand-gold: #b45309; /* Deep Warm Gold */
+  --brand-gold-hover: #92400e;
+  --brand-gold-surface: rgba(245, 158, 11, 0.12);
+  --brand-gold-border: rgba(245, 158, 11, 0.3);
+  
+  --text-muted: #53647d;
+  --text-dim: #8295b0;
 }
 
 body {
-  background: var(--background);
+  background-color: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Light Mode Global Adaptive Overrides */
+html.light body {
+  background-color: #f8fafc;
+  color: #0f172a;
+}
+
+html.light aside,
+html.light [class*="bg-[#090d16]"] {
+  background-color: #ffffff !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light header {
+  background-color: rgba(255, 255, 255, 0.95) !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+html.light [class*="bg-[#0b0f17]"] {
+  background-color: #f8fafc !important;
+}
+
+html.light [class*="bg-[#0c121e]"],
+html.light [class*="bg-[#0f172a]"] {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
+}
+
+html.light [class*="bg-slate-900/"],
+html.light [class*="bg-slate-900"] {
+  background-color: #f1f5f9 !important;
+  color: #0f172a !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light [class*="border-slate-800"],
+html.light [class*="border-slate-700"] {
+  border-color: #e2e8f0 !important;
+}
+
+/* Light Mode Text High-Contrast Rules */
+html.light .text-slate-100,
+html.light .text-slate-200,
+html.light .text-slate-300 {
+  color: #0f172a !important;
+}
+
+html.light .text-slate-400 {
+  color: #475569 !important;
+}
+
+html.light .text-slate-500 {
+  color: #64748b !important;
+}
+
+/* Ensure colored buttons, links, and badges keep white or proper contrast text */
+html.light .bg-blue-600,
+html.light .bg-blue-700,
+html.light .bg-indigo-600,
+html.light .bg-emerald-600,
+html.light .bg-rose-600,
+html.light .bg-amber-600,
+html.light .bg-purple-600,
+html.light .bg-slate-800,
+html.light .bg-slate-900 {
+  color: #ffffff !important;
+}
+
+html.light .bg-blue-600 *,
+html.light .bg-blue-700 *,
+html.light .bg-indigo-600 *,
+html.light .bg-emerald-600 *,
+html.light .bg-rose-600 *,
+html.light .bg-amber-600 *,
+html.light .bg-purple-600 *,
+html.light .bg-slate-800 *,
+html.light .bg-slate-900 *,
+html.light button.bg-blue-600,
+html.light button.bg-primary,
+html.light .badge-solid {
+  color: #ffffff !important;
+}
+
+html.light input:not([type="checkbox"]):not([type="radio"]),
+html.light select,
+html.light textarea {
+  background-color: #ffffff !important;
+  border-color: #cbd5e1 !important;
+  color: #0f172a !important;
+}
+
+html.light input::placeholder,
+html.light textarea::placeholder {
+  color: #94a3b8 !important;
+}
+
+html.light thead {
+  background-color: #f1f5f9 !important;
+  border-color: #e2e8f0 !important;
+}
+
+html.light thead th {
+  color: #334155 !important;
+}
+
+html.light tbody tr:hover {
+  background-color: #f8fafc !important;
+}
+
+html.light .divide-slate-800\/60 > * + *,
+html.light .divide-slate-800 > * + * {
+  border-color: #e2e8f0 !important;
+}
+
+/* Custom subtle enterprise scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+html.light ::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+}
+html.light ::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Dense table typography */
+.table-dense th {
+  padding: 0.5rem 0.75rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #94a3b8;
+}
+
+.table-dense td {
+  padding: 0.625rem 0.75rem;
+  font-size: 0.8125rem;
+  border-top: 1px solid #1e293b;
+}
+
+html.light .table-dense td {
+  border-top: 1px solid #e2e8f0;
 }
