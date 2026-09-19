@@ -68,7 +68,7 @@ export function Sidebar() {
       groupName: "HR & PROFILE",
       items: [
         { title: "Attendance", href: "/app/hr/attendance", icon: Clock },
-        { title: "My Leave", href: "/app/hr/leave", icon: Calendar },
+        { title: "My Leave", href: "/app/hr/leaves", icon: Calendar },
         { title: "My Salary", href: "/app/payroll/my-payslips", icon: FileCheck },
         { title: "My Documents", href: "/app/documents", icon: FileText },
         ...(isManager

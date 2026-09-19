@@ -55,7 +55,7 @@ export function LeaveBalanceWidget({ initialBalances }: LeaveBalanceWidgetProps 
           </div>
         </div>
         <Link
-          href="/app/hr/leave"
+          href="/app/hr/leaves"
           className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-amber-400 hover:underline"
         >
           Apply <Plus className="h-3 w-3" />

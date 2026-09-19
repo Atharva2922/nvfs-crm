@@ -13,7 +13,7 @@ export function QuickActionsWidget({ permissions = [], roleLevel = 10 }: QuickAc
   const actions = [
     {
       title: "Apply Leave",
-      href: "/app/hr/leave",
+      href: "/app/hr/leaves",
       icon: Calendar,
       color: "bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200 dark:border-teal-800",
     },
