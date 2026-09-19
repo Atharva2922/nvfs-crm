@@ -45,65 +45,90 @@
 }
 
 html.light {
+  /* Clean Standard Enterprise Light Theme Tokens */
   --background: #f8fafc;
-  --foreground: #091224;
+  --foreground: #0f172a;
   
   --surface: #ffffff;
   --surface-raised: #f1f5fb;
   --surface-hover: #e2eaf6;
   --surface-active: #cbdcf2;
   
-  --border-subtle: #e2e8f2;
-  --border-default: #cad7e8;
-  --border-strong: #9bb0cd;
+  --border-subtle: #f1f5f9;
+  --border-default: #e2e8f0;
+  --border-strong: #cbd5e1;
   
-  --primary: #1d4ed8; /* Deep Royal Blue */
-  --primary-hover: #1e40af;
+  --primary: #2563eb; /* Royal Blue */
+  --primary-hover: #1d4ed8;
   --primary-foreground: #ffffff;
   
-  --brand-royal: #1e40af;
-  --brand-blue: #2563eb;
+  --brand-royal: #1d4ed8;
+  --brand-blue: #3b82f6;
   --brand-gold: #b45309; /* Deep Warm Gold */
   --brand-gold-hover: #92400e;
-  --brand-gold-surface: rgba(245, 158, 11, 0.12);
-  --brand-gold-border: rgba(245, 158, 11, 0.3);
+  --brand-gold-surface: rgba(245, 158, 11, 0.1);
+  --brand-gold-border: rgba(245, 158, 11, 0.25);
   
-  --text-muted: #53647d;
-  --text-dim: #8295b0;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
 }
 
 /* ============================================================
-   SMOOTH THEME TRANSITIONS
-   All elements animate color/bg changes over 350ms.
-   .no-theme-transition is applied for one frame before the
-   class swap to prevent a flash, then removed so the
-   transition plays forward from the new palette.
+   ULTRA-SMOOTH THEME TRANSITION PIPELINE
+   1. Uses native View Transitions API (Chrome 111+, Edge, Safari 18+)
+      for hardware-accelerated, cinematic 400ms cross-fades.
+   2. Seamlessly falls back to .theme-transitioning class during
+      theme swaps for smooth interpolation across all elements.
    ============================================================ */
-*,
-*::before,
-*::after {
-  transition:
-    background-color 350ms cubic-bezier(0.4, 0, 0.2, 1),
-    border-color     350ms cubic-bezier(0.4, 0, 0.2, 1),
-    color            350ms cubic-bezier(0.4, 0, 0.2, 1),
-    fill             350ms cubic-bezier(0.4, 0, 0.2, 1),
-    stroke           350ms cubic-bezier(0.4, 0, 0.2, 1),
-    box-shadow       350ms cubic-bezier(0.4, 0, 0.2, 1),
-    outline-color    350ms cubic-bezier(0.4, 0, 0.2, 1);
+
+::view-transition-group(root) {
+  animation-duration: 400ms;
+  animation-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-/* Disable all transitions for one frame during class swap */
-.no-theme-transition *,
-.no-theme-transition *::before,
-.no-theme-transition *::after {
-  transition: none !important;
+::view-transition-old(root) {
+  animation: 400ms cubic-bezier(0.16, 1, 0.3, 1) both theme-fade-out;
 }
 
-/* Native View Transitions fade for supporting browsers */
-::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 350ms;
-  animation-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  animation: 400ms cubic-bezier(0.16, 1, 0.3, 1) both theme-fade-in;
+}
+
+@keyframes theme-fade-out {
+  from {
+    opacity: 1;
+    transform: scale(1);
+  }
+  to {
+    opacity: 0;
+    transform: scale(0.998);
+  }
+}
+
+@keyframes theme-fade-in {
+  from {
+    opacity: 0;
+    transform: scale(1.002);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* Element-level smooth interpolation during theme transition */
+.theme-transitioning,
+.theme-transitioning *,
+.theme-transitioning *::before,
+.theme-transitioning *::after {
+  transition:
+    background-color 400ms cubic-bezier(0.16, 1, 0.3, 1),
+    border-color     400ms cubic-bezier(0.16, 1, 0.3, 1),
+    color            400ms cubic-bezier(0.16, 1, 0.3, 1),
+    fill             400ms cubic-bezier(0.16, 1, 0.3, 1),
+    stroke           400ms cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow       400ms cubic-bezier(0.16, 1, 0.3, 1) !important;
+  transition-delay: 0s !important;
 }
 
 body {
@@ -114,14 +139,18 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Light Mode Global Adaptive Overrides */
+/* ============================================================
+   LIGHT THEME ADAPTIVE SYSTEM
+   Provides standard, high-contrast, beautiful enterprise styling
+   ============================================================ */
+
 html.light body {
   background-color: #f8fafc;
   color: #0f172a;
 }
 
-html.light aside,
-html.light [class*="bg-[#090d16]"] {
+/* Sidebar & Header in Light Mode */
+html.light aside {
   background-color: #ffffff !important;
   color: #0f172a !important;
   border-color: #e2e8f0 !important;
@@ -133,72 +162,126 @@ html.light header {
   color: #0f172a !important;
 }
 
+/* 1. Page & Shell Background Wrappers */
+html.light [class*="bg-[#070b14]"],
+html.light [class*="bg-[#070b16]"],
+html.light [class*="bg-[#0a0f1d]"],
 html.light [class*="bg-[#0b0f17]"] {
   background-color: #f8fafc !important;
+  color: #0f172a !important;
 }
 
+/* 2. Main Surface, Card, Panel & Container Backgrounds */
+html.light [class*="bg-[#090d16]"],
+html.light [class*="bg-[#0b101b]"],
+html.light [class*="bg-[#0b101d]"],
+html.light [class*="bg-[#0b111e]"],
+html.light [class*="bg-[#0b1120]"],
+html.light [class*="bg-[#0b1329]"],
 html.light [class*="bg-[#0c121e]"],
-html.light [class*="bg-[#0f172a]"] {
+html.light [class*="bg-[#0c1322]"],
+html.light [class*="bg-[#0d131f]"],
+html.light [class*="bg-[#0d1424]"],
+html.light [class*="bg-[#0d1527]"],
+html.light [class*="bg-[#0e1628]"],
+html.light [class*="bg-[#0f172a]"],
+html.light [class*="bg-[#111928]"] {
   background-color: #ffffff !important;
   border-color: #e2e8f0 !important;
   box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05) !important;
-}
-
-html.light [class*="bg-slate-900/"],
-html.light [class*="bg-slate-900"] {
-  background-color: #f1f5f9 !important;
   color: #0f172a !important;
-  border-color: #e2e8f0 !important;
 }
 
+/* 3. Raised / Nested / Sub-surfaces / Hover Cards / Callout Boxes */
+html.light [class*="bg-[#0d1733]"],
+html.light [class*="bg-[#0f1a30]"],
+html.light [class*="bg-[#101b33]"],
+html.light [class*="bg-[#121c33]"],
+html.light [class*="bg-[#141f33]"] {
+  background-color: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+  color: #0f172a !important;
+}
+
+/* 4. Adaptive Borders in Light Mode */
 html.light [class*="border-slate-800"],
-html.light [class*="border-slate-700"] {
+html.light [class*="border-slate-700"],
+html.light [class*="border-slate-900"],
+html.light [class*="border-[#16233d]"],
+html.light [class*="border-[#1e3258]"],
+html.light [class*="border-[#0c121e]"] {
   border-color: #e2e8f0 !important;
 }
 
-/* Light Mode Text High-Contrast Rules */
-html.light .text-slate-100,
-html.light .text-slate-200,
-html.light .text-slate-300 {
+/* 5. Light Mode Typography & Text High-Contrast Rules */
+/* Standard headings, body, and card text adapt to crisp slate-900 */
+html.light .text-white:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-purple"]):not(button):not(button *):not(a[class*="bg-"]):not(a[class*="bg-"] *),
+html.light .text-slate-100:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-purple"]):not(button *),
+html.light .text-slate-200:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-purple"]):not(button *),
+html.light .text-slate-300:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-purple"]):not(button *) {
   color: #0f172a !important;
 }
 
-html.light .text-slate-400 {
+html.light .text-slate-400:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-purple"]):not(button *) {
   color: #475569 !important;
 }
 
-html.light .text-slate-500 {
+html.light .text-slate-500:not([class*="bg-blue"]):not([class*="bg-indigo"]):not([class*="bg-emerald"]):not([class*="bg-rose"]):not([class*="bg-red"]):not([class*="bg-amber"]):not([class*="bg-purple"]):not(button *) {
   color: #64748b !important;
 }
 
-/* Ensure colored buttons, links, and badges keep white or proper contrast text */
+/* 6. Ensure buttons, badges, and colored pills retain crisp white contrast */
+html.light button.bg-blue-600,
+html.light button.bg-blue-700,
+html.light button.bg-primary,
+html.light button[class*="bg-blue"],
+html.light button[class*="bg-indigo"],
+html.light button[class*="bg-emerald"],
+html.light button[class*="bg-rose"],
+html.light button[class*="bg-red"],
+html.light button[class*="bg-amber"],
+html.light button[class*="bg-purple"],
 html.light .bg-blue-600,
 html.light .bg-blue-700,
 html.light .bg-indigo-600,
 html.light .bg-emerald-600,
 html.light .bg-rose-600,
-html.light .bg-amber-600,
+html.light .bg-red-600,
 html.light .bg-purple-600,
-html.light .bg-slate-800,
-html.light .bg-slate-900 {
+html.light a[class*="bg-blue"],
+html.light a[class*="bg-emerald"],
+html.light a[class*="bg-rose"],
+html.light a[class*="bg-indigo"],
+html.light [class*="badge-solid"] {
   color: #ffffff !important;
 }
 
+html.light button.bg-blue-600 *,
+html.light button.bg-blue-700 *,
+html.light button.bg-primary *,
+html.light button[class*="bg-blue"] *,
+html.light button[class*="bg-indigo"] *,
+html.light button[class*="bg-emerald"] *,
+html.light button[class*="bg-rose"] *,
+html.light button[class*="bg-red"] *,
+html.light button[class*="bg-amber"] *,
+html.light button[class*="bg-purple"] *,
 html.light .bg-blue-600 *,
 html.light .bg-blue-700 *,
 html.light .bg-indigo-600 *,
 html.light .bg-emerald-600 *,
 html.light .bg-rose-600 *,
-html.light .bg-amber-600 *,
+html.light .bg-red-600 *,
 html.light .bg-purple-600 *,
-html.light .bg-slate-800 *,
-html.light .bg-slate-900 *,
-html.light button.bg-blue-600,
-html.light button.bg-primary,
-html.light .badge-solid {
+html.light a[class*="bg-blue"] *,
+html.light a[class*="bg-emerald"] *,
+html.light a[class*="bg-rose"] *,
+html.light a[class*="bg-indigo"] *,
+html.light [class*="badge-solid"] * {
   color: #ffffff !important;
 }
 
+/* 7. Form Controls in Light Mode */
 html.light input:not([type="checkbox"]):not([type="radio"]),
 html.light select,
 html.light textarea {
@@ -207,30 +290,58 @@ html.light textarea {
   color: #0f172a !important;
 }
 
+html.light input:focus,
+html.light select:focus,
+html.light textarea:focus {
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
+}
+
 html.light input::placeholder,
 html.light textarea::placeholder {
   color: #94a3b8 !important;
 }
 
+/* 8. Tables in Light Mode */
 html.light thead {
   background-color: #f1f5f9 !important;
   border-color: #e2e8f0 !important;
 }
 
 html.light thead th {
-  color: #334155 !important;
+  color: #475569 !important;
+  border-bottom: 1px solid #e2e8f0 !important;
 }
 
 html.light tbody tr:hover {
   background-color: #f8fafc !important;
 }
 
+html.light tbody tr {
+  border-bottom: 1px solid #f1f5f9 !important;
+}
+
+html.light td {
+  color: #1e293b !important;
+}
+
 html.light .divide-slate-800\/60 > * + *,
+html.light .divide-slate-800\/80 > * + *,
 html.light .divide-slate-800 > * + * {
   border-color: #e2e8f0 !important;
 }
 
-/* Custom subtle enterprise scrollbars */
+/* 9. Popovers, Dropdowns, and Dialogs in Light Mode */
+html.light [role="menu"],
+html.light [role="dialog"],
+html.light [role="listbox"],
+html.light .dropdown-menu {
+  background-color: #ffffff !important;
+  border-color: #e2e8f0 !important;
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04) !important;
+}
+
+/* 10. Scrollbars */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;

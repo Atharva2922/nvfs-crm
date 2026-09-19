@@ -13,7 +13,7 @@ export function Shell({ children }: ShellProps) {
   const [currentRole, setCurrentRole] = useState<SystemRoleCode>("SUPER_ADMIN");
 
   return (
-    <div className="flex h-screen w-full overflow-hidden bg-[#0b0f17]">
+    <div className="flex h-screen w-full overflow-hidden bg-slate-50 dark:bg-[#0b0f17] text-slate-900 dark:text-slate-100">
       <Sidebar />
       <div className="flex flex-1 flex-col overflow-hidden">
         <Header currentRole={currentRole} onRoleChange={setCurrentRole} />
