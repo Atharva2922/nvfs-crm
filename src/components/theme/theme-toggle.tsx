@@ -20,17 +20,22 @@ export function ThemeToggle({ variant = "icon", className }: ThemeToggleProps) {
         type="button"
         onClick={toggleTheme}
         className={cn(
-          "relative flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-all shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500",
+          "relative flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/80 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white shadow-xs focus:outline-none focus:ring-1 focus:ring-blue-500 overflow-hidden",
           className
         )}
         title={`Switch to ${resolvedTheme === "dark" ? "Light" : "Dark"} Mode`}
         aria-label="Toggle theme"
       >
-        {resolvedTheme === "dark" ? (
-          <Moon className="h-4 w-4 text-blue-400 transition-all" />
-        ) : (
-          <Sun className="h-4 w-4 text-amber-500 transition-all" />
-        )}
+        <span
+          key={resolvedTheme}
+          className="flex items-center justify-center animate-in fade-in zoom-in-50 duration-300"
+        >
+          {resolvedTheme === "dark" ? (
+            <Moon className="h-4 w-4 text-blue-400" />
+          ) : (
+            <Sun className="h-4 w-4 text-amber-500" />
+          )}
+        </span>
       </button>
     );
   }

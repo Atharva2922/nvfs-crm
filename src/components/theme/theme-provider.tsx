@@ -15,11 +15,44 @@ const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 const THEME_KEY = "nfvs_theme_preference";
 
+/**
+ * Applies a theme class to <html> with a smooth transition.
+ *
+ * Technique:
+ * 1. Add .no-theme-transition  → disables all CSS transitions for one frame.
+ * 2. Swap the dark/light class  → elements jump to new colors instantly.
+ * 3. Remove .no-theme-transition on next rAF → transitions re-enable and
+ *    any subsequent color changes (hover, focus, etc.) animate smoothly.
+ *
+ * This avoids the "wrong-direction" flash where the page briefly shows the
+ * old theme before animating, which happens when you swap the class while
+ * transitions are already active.
+ */
+function applyTheme(effective: "light" | "dark") {
+  const root = document.documentElement;
+
+  // 1. Block transitions while we swap palettes
+  root.classList.add("no-theme-transition");
+
+  // 2. Swap theme class
+  root.classList.remove("light", "dark");
+  root.classList.add(effective);
+  root.style.colorScheme = effective;
+
+  // 3. Re-enable transitions on the very next paint
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => {
+      root.classList.remove("no-theme-transition");
+    });
+  });
+}
+
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("dark");
   const [resolvedTheme, setResolvedTheme] = useState<"light" | "dark">("dark");
   const [mounted, setMounted] = useState(false);
 
+  // Read stored preference on mount
   useEffect(() => {
     try {
       const stored = localStorage.getItem(THEME_KEY) as Theme | null;
@@ -30,30 +63,29 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     setMounted(true);
   }, []);
 
+  // Apply theme whenever it changes (after mount)
   useEffect(() => {
     if (!mounted) return;
 
-    const root = document.documentElement;
     let effective: "light" | "dark" = "dark";
 
     if (theme === "system") {
-      const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
-      effective = systemDark ? "dark" : "light";
+      effective = window.matchMedia("(prefers-color-scheme: dark)").matches
+        ? "dark"
+        : "light";
     } else {
       effective = theme;
     }
 
     setResolvedTheme(effective);
-
-    root.classList.remove("light", "dark");
-    root.classList.add(effective);
-    root.style.colorScheme = effective;
+    applyTheme(effective);
 
     try {
       localStorage.setItem(THEME_KEY, theme);
     } catch {}
   }, [theme, mounted]);
 
+  // Track system preference changes when theme === "system"
   useEffect(() => {
     if (!mounted || theme !== "system") return;
 
@@ -61,10 +93,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     const handleChange = (e: MediaQueryListEvent) => {
       const effective = e.matches ? "dark" : "light";
       setResolvedTheme(effective);
-      const root = document.documentElement;
-      root.classList.remove("light", "dark");
-      root.classList.add(effective);
-      root.style.colorScheme = effective;
+      applyTheme(effective);
     };
 
     mediaQuery.addEventListener("change", handleChange);
