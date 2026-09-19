@@ -15,6 +15,12 @@ import {
   ExternalLink,
   ShieldAlert,
   Inbox,
+  TrendingUp,
+  Award,
+  IndianRupee,
+  UserCheck,
+  Building,
+  FileText,
 } from "lucide-react";
 import Link from "next/link";
 import { cn } from "@/lib/utils";
@@ -93,12 +99,39 @@ export default function NotificationsCenterPage() {
     switch (type) {
       case "TASK_ASSIGNED":
       case "TASK_DUE":
+      case "TASK_OVERDUE":
       case "TASK_COMPLETED":
         return <CheckSquare className="h-4 w-4 text-amber-400" />;
+      case "LEAD_ASSIGNED":
+      case "LEAD_CONVERTED":
+        return <UserCheck className="h-4 w-4 text-indigo-400" />;
+      case "CLIENT_ASSIGNED":
+      case "CLIENT_UPDATED":
+        return <Building className="h-4 w-4 text-blue-400" />;
+      case "OPPORTUNITY_WON":
+        return <Award className="h-4 w-4 text-teal-400" />;
+      case "OPPORTUNITY_ASSIGNED":
+      case "OPPORTUNITY_STAGE_CHANGED":
+      case "OPPORTUNITY_LOST":
+        return <TrendingUp className="h-4 w-4 text-emerald-400" />;
+      case "PAYMENT_RECEIVED":
+        return <IndianRupee className="h-4 w-4 text-emerald-400" />;
+      case "PROPOSAL_CREATED":
+      case "PROPOSAL_APPROVED":
+      case "PROPOSAL_REJECTED":
+      case "PROPOSAL_SENT":
+      case "PROPOSAL_ACCEPTED":
+      case "PROPOSAL_EXPIRED":
+        return <FileText className="h-4 w-4 text-rose-400" />;
+      case "DOCUMENT_UPLOADED":
+        return <FileText className="h-4 w-4 text-cyan-400" />;
       case "LEAVE_REQUEST":
       case "LEAVE_APPROVED":
       case "LEAVE_REJECTED":
         return <Calendar className="h-4 w-4 text-purple-400" />;
+      case "MEETING_CREATED":
+      case "MEETING_CANCELLED":
+      case "MEETING_UPCOMING":
       case "MEETING_REMINDER":
         return <Clock className="h-4 w-4 text-blue-400" />;
       case "COMPLIANCE_DEADLINE":
@@ -179,10 +212,12 @@ export default function NotificationsCenterPage() {
         <div className="flex flex-wrap items-center gap-1.5">
           {[
             { key: "ALL", label: "All Alerts" },
-            { key: "TASK_ASSIGNED", label: "Tasks" },
-            { key: "LEAVE_APPROVED", label: "HR & Leaves" },
-            { key: "MEETING_REMINDER", label: "Meetings" },
-            { key: "SYSTEM", label: "System" },
+            { key: "OPPORTUNITY_WON,OPPORTUNITY_ASSIGNED,OPPORTUNITY_STAGE_CHANGED,OPPORTUNITY_LOST", label: "Deals & Pipeline" },
+            { key: "LEAD_ASSIGNED,LEAD_CONVERTED,CLIENT_ASSIGNED,CLIENT_UPDATED", label: "Leads & Clients" },
+            { key: "PROPOSAL_CREATED,PROPOSAL_APPROVED,PROPOSAL_REJECTED,PROPOSAL_SENT,PROPOSAL_ACCEPTED,PROPOSAL_EXPIRED,PAYMENT_RECEIVED,DOCUMENT_UPLOADED", label: "Proposals & Finance" },
+            { key: "TASK_ASSIGNED,TASK_DUE,TASK_OVERDUE,TASK_COMPLETED", label: "Tasks" },
+            { key: "MEETING_CREATED,MEETING_CANCELLED,MEETING_UPCOMING,MEETING_REMINDER", label: "Meetings" },
+            { key: "SYSTEM,LEAVE_REQUEST,LEAVE_APPROVED,LEAVE_REJECTED,COMPLIANCE_DEADLINE", label: "HR & System" },
           ].map((tab) => (
             <button
               key={tab.key}

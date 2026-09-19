@@ -1,7 +1,9 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
+import { Pagination } from "@/components/ui/pagination";
 import {
   CheckSquare,
   Plus,
@@ -25,6 +27,10 @@ import {
   ChevronRight,
   Shield,
   X,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown,
+  RotateCcw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -38,6 +44,7 @@ interface TaskItem {
   completedAt?: string | null;
   relatedProjectId?: string | null;
   relatedClientId?: string | null;
+  client?: { id: string; name: string; code: string } | null;
   creator: {
     id: string;
     firstName: string;
@@ -79,17 +86,42 @@ interface EmployeeOption {
   designation: string;
 }
 
+interface ClientOption {
+  id: string;
+  name: string;
+  code: string;
+}
+
 export default function TasksPage() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
   const [tasks, setTasks] = useState<TaskItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [clients, setClients] = useState<ClientOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
 
   // Filters
-  const [scope, setScope] = useState<"all" | "my" | "department">("all");
-  const [statusFilter, setStatusFilter] = useState<string>("ALL");
-  const [priorityFilter, setPriorityFilter] = useState<string>("ALL");
-  const [searchTerm, setSearchTerm] = useState("");
+  const [scope, setScope] = useState<"all" | "my" | "department">(
+    (searchParams.get("scope") as "all" | "my" | "department") || "all"
+  );
+  const [quickFilter, setQuickFilter] = useState<string>(searchParams.get("quickFilter") || "all");
+  const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") || "ALL");
+  const [priorityFilter, setPriorityFilter] = useState<string>(searchParams.get("priority") || "ALL");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>(searchParams.get("assigneeId") || "ALL");
+  const [clientFilter, setClientFilter] = useState<string>(searchParams.get("relatedClientId") || "ALL");
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get("search") || "");
+
+  // Sorting & Pagination
+  const [sortBy, setSortBy] = useState(searchParams.get("sortBy") || "createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">((searchParams.get("sortOrder") as "asc" | "desc") || "desc");
+  const [page, setPage] = useState(parseInt(searchParams.get("page") || "1", 10));
+  const [limit, setLimit] = useState(25);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
 
   // Modals & Drawers
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -108,19 +140,79 @@ export default function TasksPage() {
   const [formError, setFormError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  // Debounce search
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(handler);
+  }, [searchTerm]);
+
+  // Sync URL params
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (scope !== "all") params.set("scope", scope);
+    if (quickFilter !== "all") params.set("quickFilter", quickFilter);
+    if (statusFilter !== "ALL") params.set("status", statusFilter);
+    if (priorityFilter !== "ALL") params.set("priority", priorityFilter);
+    if (assigneeFilter !== "ALL") params.set("assigneeId", assigneeFilter);
+    if (clientFilter !== "ALL") params.set("relatedClientId", clientFilter);
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (sortBy !== "createdAt") params.set("sortBy", sortBy);
+    if (sortOrder !== "desc") params.set("sortOrder", sortOrder);
+    if (page > 1) params.set("page", String(page));
+
+    const newUrl = `${pathname}${params.toString() ? `?${params.toString()}` : ""}`;
+    window.history.replaceState(null, "", newUrl);
+  }, [scope, quickFilter, statusFilter, priorityFilter, assigneeFilter, clientFilter, debouncedSearch, sortBy, sortOrder, page, pathname]);
+
   const fetchTasks = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
       if (scope) params.set("scope", scope);
+      if (quickFilter && quickFilter !== "all") params.set("quickFilter", quickFilter);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (priorityFilter !== "ALL") params.set("priority", priorityFilter);
-      if (searchTerm) params.set("search", searchTerm);
+      if (assigneeFilter !== "ALL") params.set("assigneeId", assigneeFilter);
+      if (clientFilter !== "ALL") params.set("relatedClientId", clientFilter);
+      if (debouncedSearch) params.set("search", debouncedSearch);
+
+      params.set("sortBy", sortBy);
+      params.set("sortOrder", sortOrder);
+      params.set("page", String(viewMode === "kanban" ? 1 : page));
+      params.set("limit", String(viewMode === "kanban" ? 100 : limit));
 
       const res = await fetch(`/api/tasks?${params.toString()}`);
       const data = await res.json();
       if (data.success) {
-        setTasks(data.data.tasks);
+        const items = data.data.tasks || [];
+        setTasks(items);
+        if (data.data.pagination) {
+          setTotalRecords(data.data.pagination.total);
+          setTotalPages(data.data.pagination.totalPages);
+        } else {
+          setTotalRecords(items.length);
+          setTotalPages(1);
+        }
+
+        // Deep link from global search: auto-open drawer if ?id=... matches
+        const targetId = searchParams.get("id");
+        if (targetId && !selectedTask) {
+          const found = items.find((t: TaskItem) => t.id === targetId);
+          if (found) {
+            handleSelectTask(found);
+          } else {
+            // Fetch directly
+            fetch(`/api/tasks/${targetId}`)
+              .then((r) => r.json())
+              .then((d) => {
+                if (d.success && d.data) setSelectedTask(d.data);
+              })
+              .catch(() => {});
+          }
+        }
       }
     } catch (err) {
       console.error(err);
@@ -131,7 +223,7 @@ export default function TasksPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employees?limit=50");
+      const res = await fetch("/api/employees?limit=100");
       const data = await res.json();
       if (data.success && data.data.employees) {
         setEmployees(data.data.employees);
@@ -139,13 +231,58 @@ export default function TasksPage() {
     } catch {}
   };
 
+  const fetchClients = async () => {
+    try {
+      const res = await fetch("/api/crm/clients?limit=200");
+      const data = await res.json();
+      if (data.success && data.data.clients) {
+        setClients(data.data.clients);
+      }
+    } catch {}
+  };
+
   useEffect(() => {
     fetchTasks();
-  }, [scope, statusFilter, priorityFilter, searchTerm]);
+  }, [scope, quickFilter, statusFilter, priorityFilter, assigneeFilter, clientFilter, debouncedSearch, sortBy, sortOrder, page, viewMode]);
 
   useEffect(() => {
     fetchEmployees();
+    fetchClients();
   }, []);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder((prev) => (prev === "asc" ? "desc" : "asc"));
+    } else {
+      setSortBy(field);
+      setSortOrder("desc");
+    }
+    setPage(1);
+  };
+
+  const handleClearFilters = () => {
+    setScope("all");
+    setQuickFilter("all");
+    setStatusFilter("ALL");
+    setPriorityFilter("ALL");
+    setAssigneeFilter("ALL");
+    setClientFilter("ALL");
+    setSearchTerm("");
+    setDebouncedSearch("");
+    setSortBy("createdAt");
+    setSortOrder("desc");
+    setPage(1);
+  };
+
+  const hasActiveFilters = Boolean(
+    scope !== "all" ||
+    quickFilter !== "all" ||
+    statusFilter !== "ALL" ||
+    priorityFilter !== "ALL" ||
+    assigneeFilter !== "ALL" ||
+    clientFilter !== "ALL" ||
+    debouncedSearch
+  );
 
   const handleSelectTask = async (task: TaskItem) => {
     setSelectedTask(task);
@@ -328,44 +465,106 @@ export default function TasksPage() {
         </div>
       </div>
 
-      {/* Control Bar: Scope, Filters, Search */}
-      <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0f172a]/90 p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Scope Pills */}
-          <div className="flex items-center rounded-md border border-slate-800 bg-slate-900 p-0.5">
-            <button
-              onClick={() => setScope("all")}
-              className={cn(
-                "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                scope === "all" ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-              )}
-            >
-              All Tasks
-            </button>
-            <button
-              onClick={() => setScope("my")}
-              className={cn(
-                "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                scope === "my" ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-              )}
-            >
-              My Assigned
-            </button>
-            <button
-              onClick={() => setScope("department")}
-              className={cn(
-                "rounded px-2.5 py-1 text-xs font-medium transition-colors",
-                scope === "department" ? "bg-slate-800 text-white" : "text-slate-400 hover:text-slate-200"
-              )}
-            >
-              Department
-            </button>
+      {/* Control Bar: Quick Filters, Dropdowns, Search */}
+      <div className="rounded-xl border border-slate-800 bg-[#0f172a]/90 p-3.5 space-y-3">
+        {/* Quick Filter Tabs */}
+        <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {[
+              { id: "all", label: "All Tasks" },
+              { id: "my", label: "My Tasks" },
+              { id: "today", label: "Today" },
+              { id: "upcoming", label: "Upcoming" },
+              { id: "overdue", label: "Overdue" },
+              { id: "completed", label: "Completed" },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => {
+                  setQuickFilter(tab.id);
+                  setPage(1);
+                }}
+                className={cn(
+                  "rounded-md px-3 py-1 text-xs font-medium transition-colors",
+                  quickFilter === tab.id
+                    ? "bg-blue-600 text-white shadow-sm"
+                    : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/60"
+                )}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
+
+          {/* Scope Dropdown */}
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Scope:</span>
+            <select
+              value={scope}
+              onChange={(e) => {
+                setScope(e.target.value as "all" | "my" | "department");
+                setPage(1);
+              }}
+              className="h-7 rounded border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="all">Entire Organization</option>
+              <option value="my">My Assigned</option>
+              <option value="department">My Department</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Detailed Filters & Search Row */}
+        <div className="flex flex-wrap items-center gap-2.5">
+          {/* Search */}
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search tasks, descriptions, client tags..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-8 w-full rounded-md border border-slate-800 bg-slate-900 pl-8 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+          </div>
+
+          {/* Assignee Filter */}
+          <select
+            value={assigneeFilter}
+            onChange={(e) => {
+              setAssigneeFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[160px]"
+          >
+            <option value="ALL">All Assignees</option>
+            {employees.map((emp) => (
+              <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+            ))}
+          </select>
+
+          {/* Related Client Filter */}
+          <select
+            value={clientFilter}
+            onChange={(e) => {
+              setClientFilter(e.target.value);
+              setPage(1);
+            }}
+            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[160px]"
+          >
+            <option value="ALL">All Clients</option>
+            {clients.map((c) => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
 
           {/* Priority Filter */}
           <select
             value={priorityFilter}
-            onChange={(e) => setPriorityFilter(e.target.value)}
+            onChange={(e) => {
+              setPriorityFilter(e.target.value);
+              setPage(1);
+            }}
             className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
           >
             <option value="ALL">All Priorities</option>
@@ -378,7 +577,10 @@ export default function TasksPage() {
           {/* Status Filter */}
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              setStatusFilter(e.target.value);
+              setPage(1);
+            }}
             className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
           >
             <option value="ALL">All Statuses</option>
@@ -388,19 +590,87 @@ export default function TasksPage() {
             <option value="COMPLETED">Completed</option>
             <option value="CANCELLED">Cancelled</option>
           </select>
+
+          {/* Reset Filters */}
+          {hasActiveFilters && (
+            <button
+              onClick={handleClearFilters}
+              className="flex items-center gap-1.5 h-8 px-2.5 rounded-md border border-slate-800 bg-slate-900 text-xs font-medium text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+            >
+              <RotateCcw className="h-3 w-3" />
+              Reset
+            </button>
+          )}
         </div>
 
-        {/* Search */}
-        <div className="relative w-full lg:w-72">
-          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search tasks, projects, tags..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-8 w-full rounded-md border border-slate-800 bg-slate-900 pl-8 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
+        {/* Active Filter Chips */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-slate-800/60">
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Active Filters:</span>
+            {debouncedSearch && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs">
+                Search: &ldquo;{debouncedSearch}&rdquo;
+                <button onClick={() => { setSearchTerm(""); setDebouncedSearch(""); }} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {quickFilter !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                Tab: {quickFilter}
+                <button onClick={() => setQuickFilter("all")} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {scope !== "all" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                Scope: {scope}
+                <button onClick={() => setScope("all")} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {statusFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                Status: {statusFilter}
+                <button onClick={() => setStatusFilter("ALL")} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {priorityFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                Priority: {priorityFilter}
+                <button onClick={() => setPriorityFilter("ALL")} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {assigneeFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                Assignee: {employees.find(e => e.id === assigneeFilter)?.firstName || "Selected"}
+                <button onClick={() => setAssigneeFilter("ALL")} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {clientFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-800 text-slate-300 text-xs">
+                Client: {clients.find(c => c.id === clientFilter)?.name || "Selected"}
+                <button onClick={() => setClientFilter("ALL")} className="hover:text-white">
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            <button
+              onClick={handleClearFilters}
+              className="text-xs text-blue-400 hover:text-blue-300 ml-1 underline"
+            >
+              Clear all
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main View: Kanban or List */}
@@ -409,8 +679,31 @@ export default function TasksPage() {
       ) : tasks.length === 0 ? (
         <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-12 text-center">
           <CheckSquare className="mx-auto h-8 w-8 text-slate-600 mb-3" />
-          <p className="text-sm font-medium text-slate-300">No tasks found matching criteria</p>
-          <p className="text-xs text-slate-500 mt-1">Create a new task to initiate delegation and activity tracking.</p>
+          <p className="text-sm font-medium text-slate-300">
+            {hasActiveFilters ? "No tasks match your search and filter criteria" : "No corporate tasks found"}
+          </p>
+          <p className="text-xs text-slate-500 mt-1">
+            {hasActiveFilters 
+              ? "Try adjusting filters, status, or search terms."
+              : "Create a new task to initiate delegation and activity tracking."}
+          </p>
+          {hasActiveFilters ? (
+            <button
+              onClick={handleClearFilters}
+              className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-700 bg-slate-800 text-xs font-semibold text-white hover:bg-slate-700 transition-colors"
+            >
+              <RotateCcw className="h-3.5 w-3.5" />
+              Clear Filters
+            </button>
+          ) : (
+            <button
+              onClick={() => setCreateModalOpen(true)}
+              className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 text-xs font-semibold text-white hover:bg-blue-500 transition-colors"
+            >
+              <Plus className="h-3.5 w-3.5" />
+              Create Task
+            </button>
+          )}
         </div>
       ) : viewMode === "kanban" ? (
         /* Kanban Board */
@@ -466,7 +759,7 @@ export default function TasksPage() {
                         )}
 
                         {/* Project / Client Tags */}
-                        {(t.relatedProjectId || t.relatedClientId) && (
+                        {(t.relatedProjectId || t.relatedClientId || t.client) && (
                           <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
                             {t.relatedProjectId && (
                               <span className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 text-[9px] font-mono text-slate-400">
@@ -474,10 +767,10 @@ export default function TasksPage() {
                                 {t.relatedProjectId}
                               </span>
                             )}
-                            {t.relatedClientId && (
+                            {(t.client?.name || t.relatedClientId) && (
                               <span className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 text-[9px] font-mono text-cyan-400">
                                 <Briefcase className="h-2.5 w-2.5" />
-                                {t.relatedClientId}
+                                {t.client?.name || t.relatedClientId}
                               </span>
                             )}
                           </div>
@@ -509,52 +802,114 @@ export default function TasksPage() {
         </div>
       ) : (
         /* Table / List View */
-        <div className="rounded-xl border border-slate-800 bg-[#0c1322] overflow-hidden">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-800 bg-[#0f172a] text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
-              <tr>
-                <th className="px-4 py-3">Task Title</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Priority</th>
-                <th className="px-4 py-3">Assignee</th>
-                <th className="px-4 py-3">Department</th>
-                <th className="px-4 py-3">Due Date</th>
-                <th className="px-4 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {tasks.map((t) => (
-                <tr
-                  key={t.id}
-                  onClick={() => handleSelectTask(t)}
-                  className="cursor-pointer hover:bg-slate-800/40 transition-colors"
-                >
-                  <td className="px-4 py-3">
-                    <div className="flex flex-col">
-                      <span className="font-semibold text-slate-200 hover:text-blue-400">{t.title}</span>
-                      <span className="text-[10px] text-slate-500">Created by {t.creator.firstName} {t.creator.lastName}</span>
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-800 bg-[#0c1322] overflow-hidden">
+            <table className="w-full text-left text-xs">
+              <thead className="border-b border-slate-800 bg-[#0f172a] text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                <tr>
+                  <th
+                    className="px-4 py-3 cursor-pointer hover:text-white select-none"
+                    onClick={() => handleSort("title")}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Task Title</span>
+                      {sortBy === "title" ? (
+                        sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-blue-400" /> : <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-slate-600" />
+                      )}
                     </div>
-                  </td>
-                  <td className="px-4 py-3">{getStatusBadge(t.status)}</td>
-                  <td className="px-4 py-3">{getPriorityBadge(t.priority)}</td>
-                  <td className="px-4 py-3">
-                    {t.assignee ? (
-                      <span className="text-slate-300 font-medium">{t.assignee.firstName} {t.assignee.lastName}</span>
-                    ) : (
-                      <span className="text-slate-500 italic">Unassigned</span>
-                    )}
-                  </td>
-                  <td className="px-4 py-3 text-slate-400">{t.department?.name || "General"}</td>
-                  <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">
-                    {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right">
-                    <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
-                  </td>
+                  </th>
+                  <th
+                    className="px-4 py-3 cursor-pointer hover:text-white select-none"
+                    onClick={() => handleSort("status")}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Status</span>
+                      {sortBy === "status" ? (
+                        sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-blue-400" /> : <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th
+                    className="px-4 py-3 cursor-pointer hover:text-white select-none"
+                    onClick={() => handleSort("priority")}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Priority</span>
+                      {sortBy === "priority" ? (
+                        sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-blue-400" /> : <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3">Assignee</th>
+                  <th className="px-4 py-3">Department</th>
+                  <th
+                    className="px-4 py-3 cursor-pointer hover:text-white select-none"
+                    onClick={() => handleSort("dueDate")}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <span>Due Date</span>
+                      {sortBy === "dueDate" ? (
+                        sortOrder === "asc" ? <ArrowUp className="h-3.5 w-3.5 text-blue-400" /> : <ArrowDown className="h-3.5 w-3.5 text-blue-400" />
+                      ) : (
+                        <ArrowUpDown className="h-3.5 w-3.5 text-slate-600" />
+                      )}
+                    </div>
+                  </th>
+                  <th className="px-4 py-3 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-slate-800/60">
+                {tasks.map((t) => (
+                  <tr
+                    key={t.id}
+                    onClick={() => handleSelectTask(t)}
+                    className="cursor-pointer hover:bg-slate-800/40 transition-colors"
+                  >
+                    <td className="px-4 py-3">
+                      <div className="flex flex-col">
+                        <span className="font-semibold text-slate-200 hover:text-blue-400">{t.title}</span>
+                        <span className="text-[10px] text-slate-500">
+                          Created by {t.creator.firstName} {t.creator.lastName}
+                          {t.client?.name && ` • Client: ${t.client.name}`}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">{getStatusBadge(t.status)}</td>
+                    <td className="px-4 py-3">{getPriorityBadge(t.priority)}</td>
+                    <td className="px-4 py-3">
+                      {t.assignee ? (
+                        <span className="text-slate-300 font-medium">{t.assignee.firstName} {t.assignee.lastName}</span>
+                      ) : (
+                        <span className="text-slate-500 italic">Unassigned</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-slate-400">{t.department?.name || "General"}</td>
+                    <td className="px-4 py-3 text-slate-400 font-mono text-[11px]">
+                      {t.dueDate ? new Date(t.dueDate).toLocaleDateString() : "—"}
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <ChevronRight className="h-4 w-4 text-slate-500 ml-auto" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Server-Side Pagination Bar */}
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalRecords={totalRecords}
+            pageSize={limit}
+            onPageChange={(p) => setPage(p)}
+          />
         </div>
       )}
 

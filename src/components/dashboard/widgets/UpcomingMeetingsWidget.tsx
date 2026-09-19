@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Calendar as CalendarIcon, Video, MapPin, ArrowRight } from "lucide-react";
 
-interface MeetingItem {
+export interface MeetingItem {
   id: string;
   title: string;
   startDate: string;
@@ -14,11 +14,16 @@ interface MeetingItem {
   meetUrl?: string | null;
 }
 
-export function UpcomingMeetingsWidget() {
-  const [meetings, setMeetings] = useState<MeetingItem[]>([]);
-  const [loading, setLoading] = useState(true);
+interface UpcomingMeetingsWidgetProps {
+  initialMeetings?: MeetingItem[];
+}
+
+export function UpcomingMeetingsWidget({ initialMeetings }: UpcomingMeetingsWidgetProps = {}) {
+  const [meetings, setMeetings] = useState<MeetingItem[]>(initialMeetings || []);
+  const [loading, setLoading] = useState(!initialMeetings);
 
   useEffect(() => {
+    if (initialMeetings) return;
     async function fetchMeetings() {
       try {
         setLoading(true);
@@ -36,7 +41,7 @@ export function UpcomingMeetingsWidget() {
       }
     }
     fetchMeetings();
-  }, []);
+  }, [initialMeetings]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

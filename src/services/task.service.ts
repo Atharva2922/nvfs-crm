@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 import { EventBusService } from "./event-bus.service";
 import { AuditService } from "./audit.service";
+import { parseCrmDateRange } from "@/lib/crm-query";
 
 export interface CreateTaskInput {
   title: string;
@@ -48,9 +49,15 @@ export interface TaskQueryFilters {
   departmentId?: string;
   assigneeId?: string;
   creatorId?: string;
+  relatedClientId?: string;
   scope?: "my" | "department" | "all";
   search?: string;
   operationId?: string;
+  quickFilter?: "all" | "my" | "today" | "upcoming" | "overdue" | "completed";
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
 }
 
 export class TaskService {
@@ -83,19 +90,17 @@ export class TaskService {
     const where: any = { organizationId: orgId };
 
     // Scope-based filtering
-    if (filters.scope === "my" || (!isExec && !isDeptHead && filters.scope !== "all")) {
-      // Standard employee only sees tasks where they are assignee or creator
+    const effectiveScope = filters.quickFilter === "my" ? "my" : filters.scope;
+    if (effectiveScope === "my" || (!isExec && !isDeptHead && effectiveScope !== "all")) {
       where.OR = [{ assigneeId: empId }, { creatorId: empId }];
-    } else if (isDeptHead && filters.scope === "department") {
-      // Department head sees tasks for their department or where they are assigned/created
+    } else if (isDeptHead && effectiveScope === "department") {
       where.OR = [
-        { departmentId: user.employee.departmentName ? undefined : null },
+        { departmentId: user.employee.departmentId || undefined },
         { assigneeId: empId },
         { creatorId: empId },
         { assignee: { managerId: empId } },
       ];
-    } else if (!isExec && filters.scope === "all") {
-      // Non-exec attempting to view all is scoped to their department and subordinates
+    } else if (!isExec && effectiveScope === "all") {
       where.OR = [
         { assigneeId: empId },
         { creatorId: empId },
@@ -103,76 +108,136 @@ export class TaskService {
       ];
     }
 
-    if (filters.status) where.status = filters.status;
-    if (filters.priority) where.priority = filters.priority;
-    if (filters.departmentId) where.departmentId = filters.departmentId;
-    if (filters.assigneeId) where.assigneeId = filters.assigneeId;
-    if (filters.creatorId) where.creatorId = filters.creatorId;
+    if (filters.status && filters.status !== "ALL") where.status = filters.status;
+    if (filters.priority && filters.priority !== "ALL") where.priority = filters.priority;
+    if (filters.departmentId && filters.departmentId !== "ALL") where.departmentId = filters.departmentId;
+    if (filters.assigneeId && filters.assigneeId !== "ALL") where.assigneeId = filters.assigneeId;
+    if (filters.creatorId && filters.creatorId !== "ALL") where.creatorId = filters.creatorId;
     if (filters.operationId) where.operationId = filters.operationId;
-    if (filters.search) {
+    if (filters.relatedClientId && filters.relatedClientId !== "ALL") where.relatedClientId = filters.relatedClientId;
+
+    // Quick Date/Status filters
+    const now = new Date();
+    const startOfToday = new Date(now);
+    startOfToday.setHours(0, 0, 0, 0);
+    const endOfToday = new Date(now);
+    endOfToday.setHours(23, 59, 59, 999);
+
+    if (filters.quickFilter === "overdue") {
+      where.dueDate = { lt: now };
+      where.status = { notIn: ["COMPLETED", "CANCELLED"] };
+    } else if (filters.quickFilter === "today") {
+      where.dueDate = { gte: startOfToday, lte: endOfToday };
+    } else if (filters.quickFilter === "upcoming") {
+      where.dueDate = { gt: endOfToday };
+      where.status = { notIn: ["COMPLETED", "CANCELLED"] };
+    } else if (filters.quickFilter === "completed") {
+      where.status = "COMPLETED";
+    }
+
+    // Search query
+    if (filters.search && filters.search.trim()) {
+      const clean = filters.search.trim();
       where.AND = [
+        ...(where.AND || []),
         {
           OR: [
-            { title: { contains: filters.search } },
-            { description: { contains: filters.search } },
-            { relatedProjectId: { contains: filters.search } },
-            { relatedClientId: { contains: filters.search } },
+            { title: { contains: clean, mode: "insensitive" } },
+            { description: { contains: clean, mode: "insensitive" } },
+            { client: { name: { contains: clean, mode: "insensitive" } } },
           ],
         },
       ];
     }
 
-    return db.task.findMany({
-      where,
-      orderBy: [{ priority: "desc" }, { dueDate: "asc" }, { createdAt: "desc" }],
-      include: {
-        creator: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            designation: true,
-            email: true,
-            avatarUrl: true,
+    // Pagination & Sorting
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.max(1, Math.min(filters.limit || 50, 100));
+    const skip = (page - 1) * limit;
+
+    const allowedSortFields = ["dueDate", "priority", "status", "title", "createdAt", "updatedAt"];
+    const sortBy = filters.sortBy && allowedSortFields.includes(filters.sortBy) ? filters.sortBy : "dueDate";
+    const sortOrder = filters.sortOrder === "desc" ? "desc" : "asc";
+    const orderBy: any = [{ [sortBy]: sortOrder }];
+    if (sortBy !== "createdAt") {
+      orderBy.push({ createdAt: "desc" });
+    }
+
+    const [total, tasks] = await Promise.all([
+      db.task.count({ where }),
+      db.task.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          creator: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              designation: true,
+              email: true,
+              avatarUrl: true,
+            },
+          },
+          assignee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              designation: true,
+              email: true,
+              avatarUrl: true,
+              userId: true,
+            },
+          },
+          client: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+          department: {
+            select: {
+              id: true,
+              name: true,
+              code: true,
+            },
+          },
+          dependsOn: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+            },
+          },
+          dependentTasks: {
+            select: {
+              id: true,
+              title: true,
+              status: true,
+            },
+          },
+          _count: {
+            select: { comments: true },
           },
         },
-        assignee: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            designation: true,
-            email: true,
-            avatarUrl: true,
-            userId: true,
-          },
-        },
-        department: {
-          select: {
-            id: true,
-            name: true,
-            code: true,
-          },
-        },
-        dependsOn: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-          },
-        },
-        dependentTasks: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-          },
-        },
-        _count: {
-          select: { comments: true },
-        },
-      },
-    });
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    // Support both direct array usage and paginated object extraction
+    const result: any = tasks;
+    result.tasks = tasks;
+    result.total = total;
+    result.page = page;
+    result.limit = limit;
+    result.totalPages = totalPages;
+
+    return result;
   }
 
   /**

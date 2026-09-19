@@ -19,7 +19,10 @@ import {
   AlertCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
+import { Pagination } from "@/components/ui/pagination";
+import { ArrowUpDown, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
 
 interface ClientListItem {
   id: string;
@@ -53,14 +56,29 @@ interface EmployeeOption {
 }
 
 export default function ClientsDirectoryPage() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [clients, setClients] = useState<ClientListItem[]>([]);
   const [employees, setEmployees] = useState<EmployeeOption[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters
-  const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState("ALL");
-  const [tierFilter, setTierFilter] = useState("ALL");
+  // Filters & Search
+  const [searchTerm, setSearchTerm] = useState(searchParams.get("search") || "");
+  const [debouncedSearch, setDebouncedSearch] = useState(searchParams.get("search") || "");
+  const [statusFilter, setStatusFilter] = useState(searchParams.get("status") || "ALL");
+  const [tierFilter, setTierFilter] = useState(searchParams.get("tier") || "ALL");
+  const [ownerFilter, setOwnerFilter] = useState(searchParams.get("ownerId") || "ALL");
+  const [datePreset, setDatePreset] = useState(searchParams.get("datePreset") || "ALL");
+
+  // Pagination & Sorting
+  const [page, setPage] = useState(parseInt(searchParams.get("page") || "1", 10) || 1);
+  const [limit, setLimit] = useState(10);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalRecords, setTotalRecords] = useState(0);
+  const [sortBy, setSortBy] = useState(searchParams.get("sortBy") || "updatedAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">(
+    (searchParams.get("sortOrder") as "asc" | "desc") || "desc"
+  );
 
   // Modal
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -74,18 +92,37 @@ export default function ClientsDirectoryPage() {
   const [isCreating, setIsCreating] = useState(false);
   const [formError, setFormError] = useState("");
 
+  // Debounce search input
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchTerm]);
+
   const fetchClients = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (searchTerm) params.set("search", searchTerm);
+      if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (tierFilter !== "ALL") params.set("tier", tierFilter);
+      if (ownerFilter !== "ALL") params.set("ownerId", ownerFilter);
+      if (datePreset !== "ALL") params.set("datePreset", datePreset);
+      params.set("page", String(page));
+      params.set("limit", String(limit));
+      params.set("sortBy", sortBy);
+      params.set("sortOrder", sortOrder);
 
       const res = await fetch(`/api/crm/clients?${params.toString()}`);
       const data = await res.json();
-      if (data.success) {
-        setClients(data.data.clients);
+      if (data.success && data.data) {
+        setClients(data.data.clients || []);
+        if (data.meta) {
+          setTotalPages(data.meta.totalPages || 1);
+          setTotalRecords(data.meta.total || 0);
+        }
       }
     } catch (err) {
       console.error(err);
@@ -96,21 +133,65 @@ export default function ClientsDirectoryPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employees?limit=50");
+      const res = await fetch("/api/employees?limit=100");
       const data = await res.json();
       if (data.success) {
-        setEmployees(data.data.employees);
+        setEmployees(data.data.employees || []);
       }
     } catch {}
   };
 
+  // Sync URL query state
+  useEffect(() => {
+    const params = new URLSearchParams();
+    if (statusFilter !== "ALL") params.set("status", statusFilter);
+    if (tierFilter !== "ALL") params.set("tier", tierFilter);
+    if (ownerFilter !== "ALL") params.set("ownerId", ownerFilter);
+    if (datePreset !== "ALL") params.set("datePreset", datePreset);
+    if (debouncedSearch.trim()) params.set("search", debouncedSearch.trim());
+    if (page > 1) params.set("page", String(page));
+    if (sortBy !== "updatedAt") params.set("sortBy", sortBy);
+    if (sortOrder !== "desc") params.set("sortOrder", sortOrder);
+
+    const queryString = params.toString();
+    const newUrl = queryString ? `/app/crm/clients?${queryString}` : "/app/crm/clients";
+    window.history.replaceState(null, "", newUrl);
+  }, [statusFilter, tierFilter, ownerFilter, datePreset, debouncedSearch, page, sortBy, sortOrder]);
+
   useEffect(() => {
     fetchClients();
-  }, [searchTerm, statusFilter, tierFilter]);
+  }, [statusFilter, tierFilter, ownerFilter, datePreset, debouncedSearch, page, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchEmployees();
   }, []);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("desc");
+    }
+    setPage(1);
+  };
+
+  const clearFilters = () => {
+    setStatusFilter("ALL");
+    setTierFilter("ALL");
+    setOwnerFilter("ALL");
+    setDatePreset("ALL");
+    setSearchTerm("");
+    setDebouncedSearch("");
+    setPage(1);
+  };
+
+  const hasActiveFilters =
+    statusFilter !== "ALL" ||
+    tierFilter !== "ALL" ||
+    ownerFilter !== "ALL" ||
+    datePreset !== "ALL" ||
+    searchTerm.trim().length > 0;
 
   const handleCreateClient = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -202,43 +283,181 @@ export default function ClientsDirectoryPage() {
       </div>
 
       {/* Filter Bar */}
-      <div className="flex flex-col md:flex-row items-center justify-between gap-3 rounded-lg border border-slate-800 bg-[#0f172a]/90 p-3">
-        <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
-          <select
-            value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
-            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
-          >
-            <option value="ALL">All Account Statuses</option>
-            <option value="ACTIVE">Active Clients</option>
-            <option value="PROSPECT">Prospects</option>
-            <option value="LEAD">Leads</option>
-            <option value="INACTIVE">Inactive</option>
-            <option value="CHURNED">Churned</option>
-          </select>
+      <div className="flex flex-col gap-3 rounded-lg border border-slate-800 bg-[#0f172a]/90 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center gap-2 w-full md:w-auto">
+            {/* Status Filter */}
+            <select
+              value={statusFilter}
+              onChange={(e) => {
+                setStatusFilter(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="ALL">All Account Statuses</option>
+              <option value="ACTIVE">Active Clients</option>
+              <option value="PROSPECT">Prospects</option>
+              <option value="LEAD">Leads</option>
+              <option value="INACTIVE">Inactive</option>
+              <option value="CHURNED">Churned</option>
+            </select>
 
-          <select
-            value={tierFilter}
-            onChange={(e) => setTierFilter(e.target.value)}
-            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
-          >
-            <option value="ALL">All Account Tiers</option>
-            <option value="ENTERPRISE">Enterprise Tier</option>
-            <option value="MID_MARKET">Mid-Market Tier</option>
-            <option value="SMB">SMB Tier</option>
-          </select>
+            {/* Tier Filter */}
+            <select
+              value={tierFilter}
+              onChange={(e) => {
+                setTierFilter(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="ALL">All Account Tiers</option>
+              <option value="ENTERPRISE">Enterprise Tier</option>
+              <option value="MID_MARKET">Mid-Market Tier</option>
+              <option value="SMB">SMB Tier</option>
+            </select>
+
+            {/* Owner Filter */}
+            <select
+              value={ownerFilter}
+              onChange={(e) => {
+                setOwnerFilter(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="ALL">All Account Leads</option>
+              {employees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.firstName} {emp.lastName}
+                </option>
+              ))}
+            </select>
+
+            {/* Date Preset Filter */}
+            <select
+              value={datePreset}
+              onChange={(e) => {
+                setDatePreset(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+            >
+              <option value="ALL">All Creation Dates</option>
+              <option value="today">Created Today</option>
+              <option value="yesterday">Created Yesterday</option>
+              <option value="last7Days">Last 7 Days</option>
+              <option value="last30Days">Last 30 Days</option>
+              <option value="thisMonth">This Month</option>
+              <option value="lastMonth">Last Month</option>
+            </select>
+          </div>
+
+          <div className="relative w-full md:w-72">
+            <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
+            <input
+              type="text"
+              placeholder="Search company, code, phone, industry..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="h-8 w-full rounded-md border border-slate-800 bg-slate-900 pl-8 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                className="absolute right-2.5 top-2.5 text-slate-500 hover:text-slate-300"
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="relative w-full md:w-72">
-          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search company, code, industry..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="h-8 w-full rounded-md border border-slate-800 bg-slate-900 pl-8 pr-3 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-          />
-        </div>
+        {/* Active Filter Badges */}
+        {hasActiveFilters && (
+          <div className="flex flex-wrap items-center gap-1.5 pt-2 border-t border-slate-800/80 text-xs">
+            <span className="text-[11px] font-medium text-slate-400 mr-1">Active:</span>
+            {statusFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-blue-500/30 bg-blue-500/10 px-2 py-0.5 text-[10px] text-blue-300">
+                Status: {statusFilter}
+                <button
+                  onClick={() => {
+                    setStatusFilter("ALL");
+                    setPage(1);
+                  }}
+                  className="hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {tierFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-2 py-0.5 text-[10px] text-indigo-300">
+                Tier: {tierFilter}
+                <button
+                  onClick={() => {
+                    setTierFilter("ALL");
+                    setPage(1);
+                  }}
+                  className="hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {ownerFilter !== "ALL" && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-0.5 text-[10px] text-purple-300">
+                Lead: {employees.find((e) => e.id === ownerFilter)?.firstName || "Owner"}
+                <button
+                  onClick={() => {
+                    setOwnerFilter("ALL");
+                    setPage(1);
+                  }}
+                  className="hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {datePreset !== "ALL" && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-amber-500/30 bg-amber-500/10 px-2 py-0.5 text-[10px] text-amber-300">
+                Date: {datePreset}
+                <button
+                  onClick={() => {
+                    setDatePreset("ALL");
+                    setPage(1);
+                  }}
+                  className="hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            {debouncedSearch && (
+              <span className="inline-flex items-center gap-1 rounded-full border border-slate-700 bg-slate-800 px-2 py-0.5 text-[10px] text-slate-300">
+                &ldquo;{debouncedSearch}&rdquo;
+                <button
+                  onClick={() => {
+                    setSearchTerm("");
+                    setDebouncedSearch("");
+                    setPage(1);
+                  }}
+                  className="hover:text-white"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            )}
+            <button
+              onClick={clearFilters}
+              className="inline-flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 underline font-medium ml-1"
+            >
+              <RotateCcw className="h-3 w-3" />
+              <span>Clear All</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Clients Table */}
@@ -246,15 +465,89 @@ export default function ClientsDirectoryPage() {
         {loading ? (
           <div className="p-16 text-center text-xs text-slate-500">Loading client directory...</div>
         ) : clients.length === 0 ? (
-          <div className="p-16 text-center text-xs text-slate-500">No client accounts found matching criteria.</div>
+          <div className="p-16 text-center text-xs">
+            <p className="text-slate-300 font-medium text-sm">
+              {hasActiveFilters ? "No records match your filters." : "No client accounts found."}
+            </p>
+            <p className="text-slate-500 mt-1">
+              {hasActiveFilters
+                ? "Try resetting or broadening your status, tier, owner, date or search criteria."
+                : "Add your first corporate client account to commence relationship management."}
+            </p>
+            {hasActiveFilters ? (
+              <button
+                onClick={clearFilters}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-700 transition-colors"
+              >
+                <RotateCcw className="h-3.5 w-3.5" />
+                <span>Reset Filters</span>
+              </button>
+            ) : (
+              <button
+                onClick={() => setCreateModalOpen(true)}
+                className="mt-4 inline-flex items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 py-1.5 text-xs font-semibold text-white hover:bg-blue-500 transition-colors"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>Add Client</span>
+              </button>
+            )}
+          </div>
         ) : (
           <table className="w-full text-left text-xs">
             <thead className="border-b border-slate-800 bg-[#0f172a] text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
               <tr>
-                <th className="px-4 py-3">Client Account</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Tier</th>
-                <th className="px-4 py-3">Industry</th>
+                <th
+                  onClick={() => handleSort("name")}
+                  className="px-4 py-3 cursor-pointer select-none hover:text-slate-200 transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Client Account</span>
+                    {sortBy === "name" ? (
+                      sortOrder === "asc" ? <ChevronUp className="h-3 w-3 text-blue-400" /> : <ChevronDown className="h-3 w-3 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 text-slate-600" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("status")}
+                  className="px-4 py-3 cursor-pointer select-none hover:text-slate-200 transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Status</span>
+                    {sortBy === "status" ? (
+                      sortOrder === "asc" ? <ChevronUp className="h-3 w-3 text-blue-400" /> : <ChevronDown className="h-3 w-3 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 text-slate-600" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("tier")}
+                  className="px-4 py-3 cursor-pointer select-none hover:text-slate-200 transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Tier</span>
+                    {sortBy === "tier" ? (
+                      sortOrder === "asc" ? <ChevronUp className="h-3 w-3 text-blue-400" /> : <ChevronDown className="h-3 w-3 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 text-slate-600" />
+                    )}
+                  </div>
+                </th>
+                <th
+                  onClick={() => handleSort("industry")}
+                  className="px-4 py-3 cursor-pointer select-none hover:text-slate-200 transition-colors"
+                >
+                  <div className="flex items-center gap-1">
+                    <span>Industry</span>
+                    {sortBy === "industry" ? (
+                      sortOrder === "asc" ? <ChevronUp className="h-3 w-3 text-blue-400" /> : <ChevronDown className="h-3 w-3 text-blue-400" />
+                    ) : (
+                      <ArrowUpDown className="h-3 w-3 text-slate-600" />
+                    )}
+                  </div>
+                </th>
                 <th className="px-4 py-3">Account Lead</th>
                 <th className="px-4 py-3 text-center">Contacts</th>
                 <th className="px-4 py-3 text-center">Deals</th>
@@ -320,6 +613,17 @@ export default function ClientsDirectoryPage() {
               ))}
             </tbody>
           </table>
+        )}
+
+        {/* Server-Side Pagination Bar */}
+        {!loading && clients.length > 0 && (
+          <Pagination
+            currentPage={page}
+            totalPages={totalPages}
+            totalRecords={totalRecords}
+            pageSize={limit}
+            onPageChange={(p) => setPage(p)}
+          />
         )}
       </div>
 

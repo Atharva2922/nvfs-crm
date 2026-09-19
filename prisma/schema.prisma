@@ -75,6 +75,13 @@ model Organization {
   legalActivities      LegalActivity[]
   employeeRequests     EmployeeRequest[]
   onDutyAssignments    OnDutyAssignment[]
+  workflows            Workflow[]
+  workflowExecutions   WorkflowExecution[]
+  conversations        Conversation[]
+  announcements        Announcement[]
+  aiConversations      AIConversation[]
+  aiConfiguration      AIConfiguration?
+  aiUsageLogs          AIUsageLog[]
 
   @@index([code])
 }
@@ -179,6 +186,8 @@ model User {
   auditLogs           AuditLog[]     @relation("UserAuditLogs")
   notifications       Notification[]
   dashboardPreference DashboardPreference?
+  aiConversations     AIConversation[]
+  aiUsageLogs         AIUsageLog[]
 
   @@index([email])
   @@index([roleId])
@@ -296,6 +305,12 @@ model Employee {
   initiatedRenewals              LegalRenewal[]           @relation("RenewalInitiator")
   partyToContracts               LegalContract[]          @relation("LegalContractEmployeeParty")
   partyToLegalCases              LegalCase[]              @relation("LegalCaseEmployeeParty")
+  createdWorkflows               Workflow[]               @relation("WorkflowCreator")
+  conversationParticipants       ConversationParticipant[]
+  sentMessages                   Message[]                @relation("MessageSender")
+  createdConversations           Conversation[]           @relation("ConversationCreator")
+  authoredAnnouncements          Announcement[]           @relation("AnnouncementAuthor")
+  readAnnouncements              AnnouncementRead[]
 
   @@index([organizationId])
   @@index([departmentId])
@@ -2719,6 +2734,265 @@ model DashboardPreference {
 
   @@index([userId])
 }
+
+// ==========================================
+// 74. WORKFLOW AUTOMATION & SMART ACTIONS
+// ==========================================
+
+model Workflow {
+  id               String              @id @default(cuid())
+  organizationId   String
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code             String              // e.g. "WF-0001"
+  name             String
+  description      String?
+  module           String              // CRM, FINANCE, HR, PROJECTS, INVENTORY, VENDORS, CONTRACTS, COMPLIANCE, TASKS
+  triggerType      String              // RECORD_CREATED, RECORD_UPDATED, STATUS_CHANGED, DUE_DATE_APPROACHING, DUE_DATE_PASSED, AMOUNT_EXCEEDS_THRESHOLD, INVENTORY_BELOW_THRESHOLD, APPROVAL_CREATED, APPROVAL_PENDING, PAYMENT_RECEIVED, TASK_OVERDUE
+  triggerConfig    String?             // JSON configuration string
+  conditions       String              @default("[]") // JSON array of { field, operator, value, logicalOperator }
+  actions          String              @default("[]") // JSON array of { type, target, payload, priority }
+  priority         String              @default("MEDIUM") // LOW, MEDIUM, HIGH, CRITICAL
+  status           String              @default("ACTIVE") // DRAFT, ACTIVE, PAUSED, DISABLED
+  isTemplate       Boolean             @default(false)
+  templateCategory String?
+  executionCount   Int                 @default(0)
+  lastExecutedAt   DateTime?
+  
+  createdById      String?
+  createdBy        Employee?           @relation("WorkflowCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  
+  createdAt        DateTime            @default(now())
+  updatedAt        DateTime            @updatedAt
+
+  executions       WorkflowExecution[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([module])
+  @@index([triggerType])
+  @@index([status])
+}
+
+model WorkflowExecution {
+  id              String       @id @default(cuid())
+  workflowId      String
+  workflow        Workflow     @relation(fields: [workflowId], references: [id], onDelete: Cascade)
+  organizationId  String
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  
+  triggerEvent    String       // Event name that triggered this run
+  entityType      String       // Entity type (e.g. "Invoice", "Lead", "Contract")
+  entityId        String?      // Entity record ID
+  status          String       // SUCCESS, FAILED, SKIPPED, PARTIAL
+  actionsExecuted String       @default("[]") // JSON array of actions performed and outputs
+  error           String?
+  durationMs      Int          @default(0)
+  metadata        String?      // JSON payload of trigger input
+  executedAt      DateTime     @default(now())
+
+  @@index([organizationId])
+  @@index([workflowId])
+  @@index([status])
+  @@index([executedAt])
+  @@index([entityId])
+}
+
+// ==========================================
+// 75. COMMUNICATION & COLLABORATION HUB
+// ==========================================
+
+model Conversation {
+  id              String                    @id @default(cuid())
+  organizationId  String
+  organization    Organization              @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  type            String                    @default("DIRECT") // DIRECT, GROUP, CHANNEL, RECORD
+  title           String?                   // For groups, channels, or custom topics
+  description     String?
+  recordType      String?                   // CLIENT, LEAD, OPERATION, TASK, INVOICE, CONTRACT, VENDOR, PURCHASE_ORDER, EMPLOYEE
+  recordId        String?                   // Associated CRM record ID
+  departmentId    String?                   // For department channels (e.g. #engineering)
+  channelCode     String?                   // e.g. "general", "engineering", "finance"
+  isPrivate       Boolean                   @default(false)
+  isArchived      Boolean                   @default(false)
+  
+  createdById     String
+  createdBy       Employee                  @relation("ConversationCreator", fields: [createdById], references: [id], onDelete: Cascade)
+  
+  lastMessageAt   DateTime?
+  createdAt       DateTime                  @default(now())
+  updatedAt       DateTime                  @updatedAt
+
+  participants    ConversationParticipant[]
+  messages        Message[]
+
+  @@index([organizationId])
+  @@index([type])
+  @@index([recordType, recordId])
+  @@index([departmentId])
+  @@index([lastMessageAt])
+}
+
+model ConversationParticipant {
+  id              String       @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  employeeId      String
+  employee        Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  role            String       @default("MEMBER") // OWNER, ADMIN, MEMBER
+  lastReadAt      DateTime     @default(now())
+  joinedAt        DateTime     @default(now())
+
+  @@unique([conversationId, employeeId])
+  @@index([conversationId])
+  @@index([employeeId])
+}
+
+model Message {
+  id              String       @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          Employee     @relation("MessageSender", fields: [senderId], references: [id], onDelete: Cascade)
+  
+  content         String
+  parentId        String?
+  parent          Message?     @relation("ThreadReplies", fields: [parentId], references: [id], onDelete: SetNull)
+  replies         Message[]    @relation("ThreadReplies")
+  
+  priority        String       @default("NORMAL") // NORMAL, IMPORTANT, URGENT
+  isInternal      Boolean      @default(true) // True = internal staff only, False = client visible
+  isEdited        Boolean      @default(false)
+  editedAt        DateTime?
+  isDeleted       Boolean      @default(false)
+  
+  attachments     String?      // JSON array of { name, url, size, type }
+  mentions        String?      // JSON array of employee IDs or names
+  reactions       String?      // JSON array of { emoji, employeeId, employeeName }
+  
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  @@index([conversationId])
+  @@index([senderId])
+  @@index([parentId])
+  @@index([createdAt])
+}
+
+model Announcement {
+  id                 String             @id @default(cuid())
+  organizationId     String
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  title              String
+  content            String
+  priority           String             @default("NORMAL") // NORMAL, IMPORTANT, URGENT
+  audienceType       String             @default("ALL") // ALL, DEPARTMENT, ROLE, SELECTED
+  targetDepartmentId String?
+  targetRole         String?
+  
+  authorId           String
+  author             Employee           @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  
+  publishedAt        DateTime           @default(now())
+  expiresAt          DateTime?
+  attachments        String?            // JSON array of URLs
+  createdAt          DateTime           @default(now())
+  updatedAt          DateTime           @updatedAt
+
+  reads              AnnouncementRead[]
+
+  @@index([organizationId])
+  @@index([authorId])
+  @@index([publishedAt])
+}
+
+model AnnouncementRead {
+  id             String       @id @default(cuid())
+  announcementId String
+  announcement   Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  employeeId     String
+  employee       Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  readAt         DateTime     @default(now())
+
+  @@unique([announcementId, employeeId])
+  @@index([announcementId])
+  @@index([employeeId])
+}
+
+// ==========================================
+// 76. AI LAYER & EXECUTIVE INTELLIGENCE
+// ==========================================
+
+model AIConversation {
+  id                  String         @id @default(cuid())
+  organizationId      String
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId              String
+  user                User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title               String         @default("New Intelligence Session")
+  contextRecordType   String?        // CLIENT, LEAD, OPERATION, INVOICE, CONTRACT, EMPLOYEE, DASHBOARD
+  contextRecordId     String?        // Associated CRM record ID if context-anchored
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+
+  messages            AIMessage[]
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([contextRecordType, contextRecordId])
+}
+
+model AIMessage {
+  id              String         @id @default(cuid())
+  conversationId  String
+  conversation    AIConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role            String         // USER, ASSISTANT, SYSTEM
+  content         String
+  sources         String?        // JSON array of { id, type, title, url, snippet }
+  actionPreview   String?        // JSON object of suggested actionable intent { actionType, title, params, confirmed }
+  actionExecuted  Boolean        @default(false)
+  createdAt       DateTime       @default(now())
+
+  @@index([conversationId])
+  @@index([role])
+}
+
+model AIConfiguration {
+  id                  String         @id @default(cuid())
+  organizationId      String         @unique
+  organization        Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  isEnabled           Boolean        @default(true)
+  provider            String         @default("INTERNAL") // INTERNAL, GEMINI, OPENAI
+  model               String         @default("crm-intelligence-v1")
+  apiKey              String?        // Encrypted / masked provider key
+  maxTokensPerReq     Int            @default(4096)
+  featuresEnabled     String?        // JSON string of feature flags { assistant: true, summarizer: true, advisor: true, actions: true }
+  updatedAt           DateTime       @updatedAt
+
+  @@index([organizationId])
+}
+
+model AIUsageLog {
+  id              String         @id @default(cuid())
+  organizationId  String
+  organization    Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  feature         String         // ASSISTANT, SUMMARY, ADVISOR, SEARCH, ACTION
+  model           String
+  tokensUsed      Int            @default(0)
+  durationMs      Int            @default(0)
+  success         Boolean        @default(true)
+  errorMessage    String?
+  createdAt       DateTime       @default(now())
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([feature])
+  @@index([createdAt])
+}
+
+
+
 
 
 

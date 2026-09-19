@@ -1,10 +1,16 @@
 import React from "react";
+import { getCurrentUser } from "@/lib/auth";
 import { AppShell } from "@/components/layout/app-shell";
 
-export default function AppLayout({
+export const dynamic = "force-dynamic";
+
+export default async function AppLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppShell>{children}</AppShell>;
+  const user = await getCurrentUser();
+  return <AppShell initialUser={user}>{children}</AppShell>;
 }
+
+

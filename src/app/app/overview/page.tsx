@@ -15,10 +15,13 @@ import { QuickActionsWidget } from "@/components/dashboard/widgets/QuickActionsW
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Users, Layers, ShieldCheck } from "lucide-react";
 
+import { OverviewDashboardService } from "@/services/overview-dashboard.service";
+
 export const dynamic = "force-dynamic";
 
 export default async function AppOverviewPage() {
   const user = await getCurrentUser();
+  const telemetry = user ? await OverviewDashboardService.getOverviewTelemetry(user) : null;
 
   const employeeName = user?.employee
     ? `${user.employee.firstName} ${user.employee.lastName}`
@@ -46,19 +49,19 @@ export default async function AppOverviewPage() {
       {/* Quick Action Bar */}
       <QuickActionsWidget permissions={user?.permissions || []} roleLevel={user?.roleLevel || 10} />
 
-      {/* Core Self-Service Dashboard Grid */}
+      {/* Core Self-Service Dashboard Grid - Fully populated with initialData for zero-delay paint */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        <AttendanceWidget employeeId={user?.employee?.id} />
-        <TaskSummaryWidget employeeId={user?.employee?.id} scope="SELF" />
-        <ProjectProgressWidget />
+        <AttendanceWidget employeeId={user?.employee?.id} initialRecord={telemetry?.todayAttendance} />
+        <TaskSummaryWidget employeeId={user?.employee?.id} scope="SELF" initialData={telemetry?.tasks} />
+        <ProjectProgressWidget initialProjects={telemetry?.projects} />
 
-        <LeaveBalanceWidget />
-        <UpcomingMeetingsWidget />
-        <RecentNotificationsWidget />
+        <LeaveBalanceWidget initialBalances={telemetry?.leaveBalances} />
+        <UpcomingMeetingsWidget initialMeetings={telemetry?.upcomingMeetings} />
+        <RecentNotificationsWidget initialNotifications={telemetry?.recentNotifications} />
 
-        <ExpenseWidget />
-        <RequestWidget />
-        <OnDutyWidget />
+        <ExpenseWidget initialSummary={telemetry?.expenses} />
+        <RequestWidget initialData={telemetry?.requests} />
+        <OnDutyWidget initialDuties={telemetry?.onDuty?.recentTrips} />
       </div>
 
       {/* Manager & Department Head Team Extensions */}

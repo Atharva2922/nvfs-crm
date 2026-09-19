@@ -7,9 +7,10 @@ import { CheckSquare, AlertCircle, Clock, CheckCircle2, ArrowRight } from "lucid
 interface TaskSummaryWidgetProps {
   employeeId?: string;
   scope?: "SELF" | "TEAM" | "DEPARTMENT";
+  initialData?: TaskSummary;
 }
 
-interface TaskSummary {
+export interface TaskSummary {
   total: number;
   pending: number;
   dueToday: number;
@@ -24,18 +25,21 @@ interface TaskSummary {
   }>;
 }
 
-export function TaskSummaryWidget({ employeeId, scope = "SELF" }: TaskSummaryWidgetProps) {
-  const [data, setData] = useState<TaskSummary>({
-    total: 0,
-    pending: 0,
-    dueToday: 0,
-    overdue: 0,
-    completed: 0,
-    recentTasks: [],
-  });
-  const [loading, setLoading] = useState(true);
+export function TaskSummaryWidget({ employeeId, scope = "SELF", initialData }: TaskSummaryWidgetProps) {
+  const [data, setData] = useState<TaskSummary>(
+    initialData || {
+      total: 0,
+      pending: 0,
+      dueToday: 0,
+      overdue: 0,
+      completed: 0,
+      recentTasks: [],
+    }
+  );
+  const [loading, setLoading] = useState(!initialData);
 
   useEffect(() => {
+    if (initialData) return;
     async function fetchTasks() {
       try {
         setLoading(true);
@@ -53,7 +57,7 @@ export function TaskSummaryWidget({ employeeId, scope = "SELF" }: TaskSummaryWid
       }
     }
     fetchTasks();
-  }, [employeeId, scope]);
+  }, [employeeId, scope, initialData]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

@@ -16,22 +16,29 @@ import { CeoCriticalAlerts } from "./ceo-critical-alerts";
 import { CeoActivityTimeline } from "./ceo-activity-timeline";
 import { CeoUpcomingEvents } from "./ceo-upcoming-events";
 import { CeoQuickActions } from "./ceo-quick-actions";
+import { ExecutiveAIAdvisor } from "../ai/executive-ai-advisor";
 import { CeoDashboardFilters } from "@/services/ceo-dashboard.service";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
 interface CeoDashboardViewProps {
   currentUser?: any;
+  initialData?: any;
 }
 
-export function CeoDashboardView({ currentUser }: CeoDashboardViewProps) {
-  const [data, setData] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+export function CeoDashboardView({ currentUser, initialData }: CeoDashboardViewProps) {
+  const [data, setData] = useState<any>(initialData || null);
+  const [loading, setLoading] = useState(!initialData);
   const [error, setError] = useState<string | null>(null);
+  const isFirstMount = React.useRef(!!initialData);
   const [filters, setFilters] = useState<CeoDashboardFilters>({
     dateRange: "THIS_MONTH",
   });
 
   const fetchData = useCallback(async () => {
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      return;
+    }
     try {
       setLoading(true);
       setError(null);
@@ -107,6 +114,9 @@ export function CeoDashboardView({ currentUser }: CeoDashboardViewProps) {
 
       {/* 3. Critical Attention Alerts (Operational, Financial, Legal, Stock) */}
       <CeoCriticalAlerts alerts={data?.criticalAlerts || []} />
+
+      {/* Executive AI Strategic Advisor */}
+      <ExecutiveAIAdvisor />
 
       {/* 4. Top-Level Company Performance KPI Cards */}
       {data?.kpis && <CeoKpiGrid kpis={data.kpis} />}

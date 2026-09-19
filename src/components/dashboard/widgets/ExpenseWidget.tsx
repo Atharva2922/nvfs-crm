@@ -4,23 +4,30 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { IndianRupee, Plus, ArrowRight } from "lucide-react";
 
-interface ExpenseSummary {
+export interface ExpenseSummary {
   pendingCount: number;
   pendingAmount: number;
   approvedCount: number;
   approvedAmount: number;
 }
 
-export function ExpenseWidget() {
-  const [summary, setSummary] = useState<ExpenseSummary>({
-    pendingCount: 0,
-    pendingAmount: 0,
-    approvedCount: 0,
-    approvedAmount: 0,
-  });
-  const [loading, setLoading] = useState(true);
+interface ExpenseWidgetProps {
+  initialSummary?: ExpenseSummary;
+}
+
+export function ExpenseWidget({ initialSummary }: ExpenseWidgetProps = {}) {
+  const [summary, setSummary] = useState<ExpenseSummary>(
+    initialSummary || {
+      pendingCount: 0,
+      pendingAmount: 0,
+      approvedCount: 0,
+      approvedAmount: 0,
+    }
+  );
+  const [loading, setLoading] = useState(!initialSummary);
 
   useEffect(() => {
+    if (initialSummary) return;
     async function fetchExpenses() {
       try {
         setLoading(true);
@@ -38,7 +45,7 @@ export function ExpenseWidget() {
       }
     }
     fetchExpenses();
-  }, []);
+  }, [initialSummary]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

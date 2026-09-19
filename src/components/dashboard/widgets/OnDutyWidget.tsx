@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Briefcase, MapPin, ArrowRight } from "lucide-react";
 
-interface OnDutyItem {
+export interface OnDutyItem {
   id: string;
   assignmentNumber: string;
   clientName?: string | null;
@@ -14,11 +14,16 @@ interface OnDutyItem {
   status: string;
 }
 
-export function OnDutyWidget() {
-  const [duties, setDuties] = useState<OnDutyItem[]>([]);
-  const [loading, setLoading] = useState(true);
+interface OnDutyWidgetProps {
+  initialDuties?: OnDutyItem[];
+}
+
+export function OnDutyWidget({ initialDuties }: OnDutyWidgetProps = {}) {
+  const [duties, setDuties] = useState<OnDutyItem[]>(initialDuties || []);
+  const [loading, setLoading] = useState(!initialDuties);
 
   useEffect(() => {
+    if (initialDuties) return;
     async function fetchOnDuty() {
       try {
         setLoading(true);
@@ -36,7 +41,7 @@ export function OnDutyWidget() {
       }
     }
     fetchOnDuty();
-  }, []);
+  }, [initialDuties]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

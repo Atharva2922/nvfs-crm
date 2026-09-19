@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  compress: true,
+  experimental: {
+    optimizePackageImports: ["lucide-react", "@tanstack/react-table", "clsx", "tailwind-merge"],
+  },
 };
 
 export default nextConfig;

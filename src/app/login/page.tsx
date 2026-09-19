@@ -66,7 +66,21 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/app/overview");
+      const roleCode = json.data?.roleCode?.toUpperCase() || "";
+      let targetDashboard = "/app/overview";
+      if (roleCode === "CEO" || roleCode === "SUPER_ADMIN" || roleCode === "DIRECTOR") {
+        targetDashboard = "/app/dashboard/ceo";
+      } else if (roleCode === "CHAIRPERSON") {
+        targetDashboard = "/app/dashboard/chairperson";
+      } else if (roleCode === "CTO" || roleCode === "TECH_DIRECTOR" || roleCode === "VP_ENGINEERING") {
+        targetDashboard = "/app/dashboard/cto";
+      } else if (roleCode === "CMO" || roleCode === "MARKETING_DIRECTOR" || roleCode === "VP_GROWTH") {
+        targetDashboard = "/app/dashboard/cmo";
+      } else if (roleCode === "CFO" || roleCode === "FINANCE_DIRECTOR" || roleCode === "VP_FINANCE") {
+        targetDashboard = "/app/dashboard/cfo";
+      }
+
+      router.push(targetDashboard);
     } catch {
       setError("Network error while communicating with authentication server");
       setIsLoading(false);
@@ -105,7 +119,21 @@ export default function LoginPage() {
       }
 
       setIsGoogleModalOpen(false);
-      router.push("/app/overview");
+      const roleCode = json.data?.roleCode?.toUpperCase() || "";
+      let targetDashboard = "/app/overview";
+      if (roleCode === "CEO" || roleCode === "SUPER_ADMIN" || roleCode === "DIRECTOR") {
+        targetDashboard = "/app/dashboard/ceo";
+      } else if (roleCode === "CHAIRPERSON") {
+        targetDashboard = "/app/dashboard/chairperson";
+      } else if (roleCode === "CTO" || roleCode === "TECH_DIRECTOR" || roleCode === "VP_ENGINEERING") {
+        targetDashboard = "/app/dashboard/cto";
+      } else if (roleCode === "CMO" || roleCode === "MARKETING_DIRECTOR" || roleCode === "VP_GROWTH") {
+        targetDashboard = "/app/dashboard/cmo";
+      } else if (roleCode === "CFO" || roleCode === "FINANCE_DIRECTOR" || roleCode === "VP_FINANCE") {
+        targetDashboard = "/app/dashboard/cfo";
+      }
+
+      router.push(targetDashboard);
     } catch {
       setGoogleError("Connection error while authenticating with Google service");
       setIsGoogleLoading(false);

@@ -1,4 +1,5 @@
 import React from "react";
+import Link from "next/link";
 import { db } from "@/lib/db";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -19,6 +20,27 @@ export default async function AppSettingsPage() {
         title="Platform & System Settings"
         description="Global parameters, organization boundary configuration, and runtime environment settings."
       />
+
+      {/* Quick Navigation to Workflows */}
+      <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-r from-blue-900/20 via-indigo-900/20 to-slate-900/40 p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 text-white shadow">
+              <Sliders className="h-4 w-4" />
+            </span>
+            <h3 className="text-sm font-bold text-white">Workflow Automation & Smart Actions Engine</h3>
+          </div>
+          <p className="text-xs text-slate-300 max-w-xl">
+            Configure event-driven triggers, multi-tier escalation ladders, automated task generation, and executive alerts.
+          </p>
+        </div>
+        <Link
+          href="/app/settings/workflows"
+          className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-500 text-xs font-semibold text-white shadow-md transition self-start sm:self-center"
+        >
+          Manage Workflows →
+        </Link>
+      </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         <Card>

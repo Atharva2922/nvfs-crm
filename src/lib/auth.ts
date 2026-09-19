@@ -44,7 +44,26 @@ export function parseSessionToken(token: string): SessionPayload | null {
   }
 }
 
-export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
+import { cache } from "react";
+
+// In-memory session cache for rapid concurrent requests across API routes
+interface CachedUserSession {
+  user: AuthenticatedUser;
+  cachedAt: number;
+}
+
+const userSessionMemoryCache = new Map<string, CachedUserSession>();
+const CACHE_TTL_MS = 30 * 1000; // 30 seconds
+
+export function invalidateUserSessionCache(userId?: string) {
+  if (userId) {
+    userSessionMemoryCache.delete(userId);
+  } else {
+    userSessionMemoryCache.clear();
+  }
+}
+
+export const getCurrentUser = cache(async function getCurrentUser(): Promise<AuthenticatedUser | null> {
   try {
     const cookieStore = await cookies();
     const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
@@ -52,6 +71,13 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
 
     const payload = parseSessionToken(token);
     if (!payload) return null;
+
+    // Check in-memory cache first to avoid repetitive remote DB roundtrips
+    const cached = userSessionMemoryCache.get(payload.userId);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < CACHE_TTL_MS) {
+      return cached.user;
+    }
 
     const user = await db.user.findUnique({
       where: { id: payload.userId },
@@ -72,9 +98,12 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
       },
     });
 
-    if (!user || !user.isActive) return null;
+    if (!user || !user.isActive) {
+      userSessionMemoryCache.delete(payload.userId);
+      return null;
+    }
 
-    return {
+    const authenticatedUser: AuthenticatedUser = {
       id: user.id,
       email: user.email,
       roleCode: user.role.code as SystemRoleCode,
@@ -100,8 +129,16 @@ export async function getCurrentUser(): Promise<AuthenticatedUser | null> {
         : null,
       permissions: user.role.rolePermissions.map((rp) => rp.permission.code),
     };
+
+    userSessionMemoryCache.set(payload.userId, {
+      user: authenticatedUser,
+      cachedAt: now,
+    });
+
+    return authenticatedUser;
   } catch (error) {
     console.error("[Auth Error]: Failed to retrieve current user", error);
     return null;
   }
-}
+});
+

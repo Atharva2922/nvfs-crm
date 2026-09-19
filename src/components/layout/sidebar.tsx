@@ -15,6 +15,7 @@ import {
   BarChart3,
   Calendar,
   Bell,
+  MessageSquare,
   CheckSquare,
   ShieldAlert,
   Settings,
@@ -28,8 +29,9 @@ import {
   UserCheck,
   BookOpen,
   Sparkles,
+  Zap,
 } from "lucide-react";
-import { AuthenticatedUser } from "@/types";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface NavGroup {
   groupName?: string;
@@ -44,33 +46,8 @@ interface NavGroup {
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
+  const { user: currentUser, role, roleLevel, permissions, isManager } = useAuth();
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchUser() {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data) {
-            if (isMounted) setCurrentUser(json.data);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch session user in Sidebar:", err);
-      }
-    }
-    fetchUser();
-    return () => {
-      isMounted = false;
-    };
-  }, [pathname]);
-
-  const role = currentUser?.roleCode || "EMPLOYEE";
-  const roleLevel = currentUser?.roleLevel || 10;
-  const permissions = currentUser?.permissions || [];
-  const isManager = roleLevel >= 30 || role === "MANAGER";
 
   // Build navigation items based on User Role & Permissions
   const navGroups: NavGroup[] = [
@@ -80,6 +57,8 @@ export function Sidebar() {
     {
       groupName: "MY WORK",
       items: [
+        { title: "AI Intelligence", href: "/app/ai", icon: Sparkles },
+        { title: "Communications", href: "/app/communications", icon: MessageSquare },
         { title: "My Tasks", href: "/app/tasks", icon: CheckSquare },
         { title: "My Projects", href: "/app/projects", icon: FolderKanban },
         { title: "Calendar", href: "/app/calendar", icon: Calendar },
@@ -112,12 +91,34 @@ export function Sidebar() {
 
   // Optional Administrative / Executive Modules
   if (roleLevel >= 50 || ["SUPER_ADMIN", "ADMIN", "CEO", "CFO", "CTO", "CMO", "CHAIRPERSON"].includes(role)) {
+    const executiveItems = [
+      ...(role === "CEO" || role === "SUPER_ADMIN" || role === "CHAIRPERSON" || roleLevel >= 90 || permissions.includes("dashboard.ceo.view")
+        ? [{ title: "CEO Dashboard", href: "/app/dashboard/ceo", icon: Sparkles }]
+        : []),
+      ...(role === "CHAIRPERSON" || role === "CEO" || role === "SUPER_ADMIN" || permissions.includes("dashboard.chairperson.view")
+        ? [{ title: "Chairperson Oversight", href: "/app/dashboard/chairperson", icon: Building }]
+        : []),
+      ...(role === "CTO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || permissions.includes("dashboard.cto.view")
+        ? [{ title: "CTO Tech Center", href: "/app/dashboard/cto", icon: Layers }]
+        : []),
+      ...(role === "CMO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || permissions.includes("dashboard.cmo.view")
+        ? [{ title: "CMO Growth Center", href: "/app/dashboard/cmo", icon: BarChart3 }]
+        : []),
+      ...(role === "CFO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || permissions.includes("dashboard.cfo.view")
+        ? [{ title: "CFO Treasury", href: "/app/dashboard/cfo", icon: IndianRupee }]
+        : []),
+    ];
+
+    if (executiveItems.length > 0) {
+      navGroups.push({
+        groupName: "EXECUTIVE SUITE",
+        items: executiveItems,
+      });
+    }
+
     navGroups.push({
       groupName: "ENTERPRISE MODULES",
       items: [
-        ...(role === "CEO" || role === "SUPER_ADMIN" || role === "CHAIRPERSON" || roleLevel >= 90 || permissions.includes("dashboard.ceo.view")
-          ? [{ title: "CEO Dashboard", href: "/app/dashboard/ceo", icon: Sparkles }]
-          : []),
         ...(role === "CMO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || roleLevel >= 80 || permissions.some((p) => p.startsWith("crm"))
           ? [{ title: "CRM", href: "/app/crm", icon: Briefcase }]
           : []),
@@ -139,6 +140,7 @@ export function Sidebar() {
         ...(role === "ADMIN" || role === "SUPER_ADMIN" || role === "CEO" || role === "CHAIRPERSON" || role === "DEPARTMENT_HEAD" || roleLevel >= 50 || permissions.some((p) => p.startsWith("hr") || p.startsWith("employees"))
           ? [{ title: "HR & Organization", href: "/app/hr", icon: Building }]
           : []),
+        ...(roleLevel >= 50 ? [{ title: "Workflows & Automation", href: "/app/settings/workflows", icon: Zap }] : []),
         ...(roleLevel >= 50 ? [{ title: "Reports & Cockpit", href: "/app/reports", icon: BarChart3 }] : []),
         ...(roleLevel >= 80 ? [{ title: "Audit Trail", href: "/app/audit", icon: ShieldAlert }] : []),
       ],
@@ -233,7 +235,10 @@ export function Sidebar() {
               <Building className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
               <span className="truncate max-w-[130px]">NFVS-CORP</span>
             </div>
-            <span className="rounded bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60 px-1.5 py-0.5 text-[9px] font-mono text-amber-700 dark:text-amber-300 font-medium">
+            <span
+              suppressHydrationWarning
+              className="rounded bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60 px-1.5 py-0.5 text-[9px] font-mono text-amber-700 dark:text-amber-300 font-medium"
+            >
               {currentUser?.roleName || "Active"}
             </span>
           </div>

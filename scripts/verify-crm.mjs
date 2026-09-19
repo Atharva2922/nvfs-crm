@@ -204,7 +204,7 @@ async function run() {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      email: "alex.mercer@nfvs.internal",
+      email: "employee@nfvs.internal",
       password: "Enterprise@2026"
     })
   });
@@ -214,15 +214,15 @@ async function run() {
     "Content-Type": "application/json",
     ...(empCookies ? { Cookie: empCookies } : {})
   };
-  console.log("✓ Alex Mercer (Sales Representative / Employee) authenticated.");
+  console.log("✓ Staff Employee (Priya Patel) authenticated.");
 
   // Employee queries my leads
   const empLeadsRes = await fetch(`${BASE_URL}/api/crm/leads?scope=my`, { headers: empHeaders });
   if (!empLeadsRes.ok) throw new Error(`Employee fetch leads failed: ${empLeadsRes.status}`);
   const empLeadsJson = await empLeadsRes.json();
-  console.log(`✓ Alex Mercer 'my leads' scoped query returned: ${empLeadsJson.data.leads.length} leads.`);
+  console.log(`✓ Priya Patel 'my leads' scoped query returned: ${empLeadsJson.data.leads.length} leads.`);
 
-  // Employee creates a lead owned by himself
+  // Employee creates a lead owned by herself
   const empNewLeadRes = await fetch(`${BASE_URL}/api/crm/leads`, {
     method: "POST",
     headers: empHeaders,
@@ -238,7 +238,7 @@ async function run() {
   });
   if (!empNewLeadRes.ok) throw new Error(`Employee create lead failed: ${empNewLeadRes.status}`);
   const empLeadData = (await empNewLeadRes.json()).data;
-  console.log(`✓ Alex Mercer successfully captured personal deal lead: ${empLeadData.firstName} ${empLeadData.lastName}`);
+  console.log(`✓ Staff employee successfully captured deal lead: ${empLeadData.firstName} ${empLeadData.lastName}`);
 
   // Re-check employee scoped leads count
   const empLeadsCheckRes = await fetch(`${BASE_URL}/api/crm/leads?scope=my`, { headers: empHeaders });
@@ -247,8 +247,120 @@ async function run() {
   if (!foundLead) throw new Error("Scoped query failed to return employee-owned lead!");
   console.log("✓ Scoped query correctly returned personal lead under employee ownership.");
 
+  // 10. Test CRM Tasks API
+  console.log("\n[10] Testing Client Task Lifecycle...");
+  const createTaskRes = await fetch(`${BASE_URL}/api/crm/clients/${apexClient.id}/tasks`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      title: "Prepare Master Service Agreement & SLA for Apex Global",
+      description: "Draft 24/7 SLA schedule and submit to legal review",
+      priority: "HIGH",
+      dueDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString()
+    })
+  });
+  if (!createTaskRes.ok) throw new Error(`Create task failed: ${createTaskRes.status}`);
+  const taskData = (await createTaskRes.json()).data;
+  console.log(`✓ Created CRM Task: "${taskData.title}" (Status: ${taskData.status}, Priority: ${taskData.priority})`);
+
+  // Complete task
+  const completeTaskRes = await fetch(`${BASE_URL}/api/crm/clients/${apexClient.id}/tasks`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      taskId: taskData.id,
+      status: "COMPLETED"
+    })
+  });
+  if (!completeTaskRes.ok) throw new Error(`Complete task failed: ${completeTaskRes.status}`);
+  const completedTaskData = (await completeTaskRes.json()).data;
+  console.log(`✓ Completed CRM Task: "${completedTaskData.title}" (Status: ${completedTaskData.status})`);
+
+  // 11. Test Commercial Proposals Engine
+  console.log("\n[11] Testing Commercial Proposals Engine with Line Items...");
+  const createProposalRes = await fetch(`${BASE_URL}/api/crm/clients/${apexClient.id}/proposals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      title: "Enterprise Platform Deployment & Support SLA - Year 1",
+      opportunityId: oppId,
+      validUntil: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      terms: "Net 30. Standard commercial SLA terms apply.",
+      items: [
+        { description: "Enterprise SaaS Licenses (500 seats)", quantity: 500, unitPrice: 120, discountPercent: 10, taxPercent: 18 },
+        { description: "Dedicated Implementation & Architecture Engineering", quantity: 1, unitPrice: 25000, discountPercent: 0, taxPercent: 18 }
+      ]
+    })
+  });
+  if (!createProposalRes.ok) throw new Error(`Create proposal failed: ${createProposalRes.status} ${await createProposalRes.text()}`);
+  const proposalData = (await createProposalRes.json()).data;
+  console.log(`✓ Generated Proposal: ${proposalData.proposalNumber} - "${proposalData.title}" (Total: ₹${proposalData.grandTotal?.toLocaleString()})`);
+
+  // Advance Proposal to SENT then ACCEPTED
+  const updatePropRes = await fetch(`${BASE_URL}/api/crm/clients/${apexClient.id}/proposals`, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify({
+      activityId: proposalData.id,
+      status: "ACCEPTED",
+      notes: "Signed by VP Michael Vance via enterprise e-signature"
+    })
+  });
+  if (!updatePropRes.ok) throw new Error(`Update proposal failed: ${updatePropRes.status}`);
+  const updatedProp = (await updatePropRes.json()).data;
+  console.log(`✓ Proposal Status Updated: ${updatedProp.status} (Proposal #${updatedProp.proposalNumber})`);
+
+  // 12. Test Customer Documents Module
+  console.log("\n[12] Testing Customer Documents Management...");
+  const uploadDocRes = await fetch(`${BASE_URL}/api/crm/clients/${apexClient.id}/documents`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      title: "Apex Global Security & Compliance NDA.pdf",
+      category: "NDA",
+      fileUrl: "https://storage.nfvs.internal/docs/apex-nda-signed.pdf",
+      fileSize: "2.4 MB",
+      opportunityId: oppId
+    })
+  });
+  if (!uploadDocRes.ok) throw new Error(`Upload document failed: ${uploadDocRes.status}`);
+  const docData = (await uploadDocRes.json()).data;
+  console.log(`✓ Document Uploaded: "${docData.title}" (Category: ${docData.category})`);
+
+  // Verify document in list
+  const listDocsRes = await fetch(`${BASE_URL}/api/crm/clients/${apexClient.id}/documents`, { headers });
+  const docsList = (await listDocsRes.json()).data;
+  const foundDoc = docsList.find(d => d.id === docData.id);
+  if (!foundDoc) throw new Error("Uploaded document not found in client documents list!");
+  console.log(`✓ Verified Document retrieval: Found ${docsList.length} documents for client.`);
+
+  // 13. Test Scoped CRM Search
+  console.log("\n[13] Testing Global Scoped CRM Search...");
+  const searchRes = await fetch(`${BASE_URL}/api/crm/search?q=Apex`, { headers });
+  if (!searchRes.ok) throw new Error(`CRM Search failed: ${searchRes.status}`);
+  const searchResults = (await searchRes.json()).data;
+  console.log(`✓ CRM Search for 'Apex':`);
+  console.log(`   - Clients found: ${searchResults.clients?.length || 0}`);
+  console.log(`   - Leads found: ${searchResults.leads?.length || 0}`);
+  console.log(`   - Opportunities found: ${searchResults.opportunities?.length || 0}`);
+
+  // 14. Test Live CRM Cockpit Telemetry
+  console.log("\n[14] Testing Live CRM Cockpit Dashboard Aggregation...");
+  const cockpitRes = await fetch(`${BASE_URL}/api/crm/cockpit`, { headers });
+  if (!cockpitRes.ok) throw new Error(`CRM Cockpit failed: ${cockpitRes.status}`);
+  const cockpit = (await cockpitRes.json()).data;
+  console.log(`✓ Live Cockpit Telemetry:`);
+  console.log(`   - Total Leads: ${cockpit.metrics.totalLeads}`);
+  console.log(`   - Converted Leads: ${cockpit.metrics.convertedLeads}`);
+  console.log(`   - Total Clients: ${cockpit.metrics.totalClients}`);
+  console.log(`   - Active Opportunities: ${cockpit.metrics.activeOpportunities}`);
+  console.log(`   - Won Opportunities: ${cockpit.metrics.wonOpportunities}`);
+  console.log(`   - Closed Won Revenue: ₹${cockpit.metrics.wonRevenue?.toLocaleString()}`);
+  console.log(`   - Recent Activities count: ${cockpit.recentActivities?.length}`);
+  console.log(`   - Recent Clients count: ${cockpit.recentClients?.length}`);
+
   console.log("\n==================================================");
-  console.log("ALL BLOCK 5 CRM TESTS PASSED PERFECTLY!");
+  console.log("ALL COMPLETE END-TO-END CRM TESTS PASSED PERFECTLY!");
   console.log("==================================================");
 }
 

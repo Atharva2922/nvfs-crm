@@ -5,10 +5,17 @@ import { Clock, CheckCircle2, AlertCircle, Play, LogOut, RefreshCw } from "lucid
 
 interface AttendanceWidgetProps {
   employeeId?: string;
+  initialRecord?: {
+    id?: string;
+    checkInTime?: string | null;
+    checkOutTime?: string | null;
+    status: string;
+    workMode: string;
+  } | null;
 }
 
-export function AttendanceWidget({ employeeId }: AttendanceWidgetProps) {
-  const [loading, setLoading] = useState(true);
+export function AttendanceWidget({ employeeId, initialRecord }: AttendanceWidgetProps) {
+  const [loading, setLoading] = useState(initialRecord === undefined);
   const [actionLoading, setActionLoading] = useState(false);
   const [todayRecord, setTodayRecord] = useState<{
     id?: string;
@@ -16,16 +23,16 @@ export function AttendanceWidget({ employeeId }: AttendanceWidgetProps) {
     checkOutTime?: string | null;
     status: string;
     workMode: string;
-  } | null>(null);
+  } | null>(initialRecord ?? null);
 
   const fetchTodayAttendance = async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/hr/attendance/today");
+      const res = await fetch("/api/hr/attendance?scope=my");
       if (res.ok) {
         const json = await res.json();
-        if (json.success) {
-          setTodayRecord(json.data);
+        if (json.success && json.data) {
+          setTodayRecord(json.data.myTodayRecord);
         }
       }
     } catch (err) {
@@ -36,16 +43,18 @@ export function AttendanceWidget({ employeeId }: AttendanceWidgetProps) {
   };
 
   useEffect(() => {
-    fetchTodayAttendance();
-  }, [employeeId]);
+    if (initialRecord === undefined) {
+      fetchTodayAttendance();
+    }
+  }, [employeeId, initialRecord]);
 
   const handleClockIn = async () => {
     try {
       setActionLoading(true);
-      const res = await fetch("/api/hr/attendance/clock-in", {
+      const res = await fetch("/api/hr/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workMode: "ON_SITE" }),
+        body: JSON.stringify({ action: "CHECK_IN", workMode: "ON_SITE" }),
       });
       if (res.ok) {
         await fetchTodayAttendance();
@@ -60,9 +69,10 @@ export function AttendanceWidget({ employeeId }: AttendanceWidgetProps) {
   const handleClockOut = async () => {
     try {
       setActionLoading(true);
-      const res = await fetch("/api/hr/attendance/clock-out", {
+      const res = await fetch("/api/hr/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "CHECK_OUT" }),
       });
       if (res.ok) {
         await fetchTodayAttendance();

@@ -27,40 +27,21 @@ const HR_LINKS = [
   { label: "Compliance", href: "/app/hr/compliance", icon: ShieldCheck, exact: false, requiresManagement: true },
 ];
 
+import { useAuth } from "@/components/providers/auth-provider";
+
 export function HrNav() {
   const pathname = usePathname();
-  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
+  const { user: currentUser, role, roleLevel } = useAuth();
 
-  useEffect(() => {
-    let isMounted = true;
-    async function fetchUser() {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data) {
-            if (isMounted) setCurrentUser(json.data);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch user session in HrNav:", err);
-      }
-    }
-    fetchUser();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+  const isManagement =
+    role === "SUPER_ADMIN" ||
+    role === "ADMIN" ||
+    role === "CEO" ||
+    role === "CHAIRPERSON" ||
+    role === "DEPARTMENT_HEAD" ||
+    role === "MANAGER" ||
+    roleLevel >= 30;
 
-  const isManagement = currentUser
-    ? currentUser.roleCode === "SUPER_ADMIN" ||
-      currentUser.roleCode === "ADMIN" ||
-      currentUser.roleCode === "CEO" ||
-      currentUser.roleCode === "CHAIRPERSON" ||
-      currentUser.roleCode === "DEPARTMENT_HEAD" ||
-      currentUser.roleCode === "MANAGER" ||
-      (currentUser.roleLevel || 10) >= 30
-    : true; // Default allow while loading
 
   const visibleLinks = HR_LINKS.filter((link) => !link.requiresManagement || isManagement);
 

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Calendar, Plus, ArrowRight } from "lucide-react";
 
-interface LeaveBalanceItem {
+export interface LeaveBalanceItem {
   code: string;
   name: string;
   allocated: number;
@@ -13,11 +13,16 @@ interface LeaveBalanceItem {
   remaining: number;
 }
 
-export function LeaveBalanceWidget() {
-  const [balances, setBalances] = useState<LeaveBalanceItem[]>([]);
-  const [loading, setLoading] = useState(true);
+interface LeaveBalanceWidgetProps {
+  initialBalances?: LeaveBalanceItem[];
+}
+
+export function LeaveBalanceWidget({ initialBalances }: LeaveBalanceWidgetProps = {}) {
+  const [balances, setBalances] = useState<LeaveBalanceItem[]>(initialBalances || []);
+  const [loading, setLoading] = useState(!initialBalances);
 
   useEffect(() => {
+    if (initialBalances) return;
     async function fetchBalances() {
       try {
         setLoading(true);
@@ -35,7 +40,7 @@ export function LeaveBalanceWidget() {
       }
     }
     fetchBalances();
-  }, []);
+  }, [initialBalances]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { FileText, Plus, ArrowRight } from "lucide-react";
 
-interface RequestSummary {
+export interface RequestSummary {
   pendingCount: number;
   approvedCount: number;
   recentRequests: Array<{
@@ -17,15 +17,22 @@ interface RequestSummary {
   }>;
 }
 
-export function RequestWidget() {
-  const [data, setData] = useState<RequestSummary>({
-    pendingCount: 0,
-    approvedCount: 0,
-    recentRequests: [],
-  });
-  const [loading, setLoading] = useState(true);
+interface RequestWidgetProps {
+  initialData?: RequestSummary;
+}
+
+export function RequestWidget({ initialData }: RequestWidgetProps = {}) {
+  const [data, setData] = useState<RequestSummary>(
+    initialData || {
+      pendingCount: 0,
+      approvedCount: 0,
+      recentRequests: [],
+    }
+  );
+  const [loading, setLoading] = useState(!initialData);
 
   useEffect(() => {
+    if (initialData) return;
     async function fetchRequests() {
       try {
         setLoading(true);
@@ -43,7 +50,7 @@ export function RequestWidget() {
       }
     }
     fetchRequests();
-  }, []);
+  }, [initialData]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

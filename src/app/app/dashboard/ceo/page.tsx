@@ -46,5 +46,9 @@ export default async function AppCeoDashboardPage() {
     );
   }
 
-  return <CeoDashboardView currentUser={user} />;
+  const initialData = await CeoDashboardService.getExecutiveDashboardData(user, {
+    dateRange: "THIS_MONTH",
+  });
+
+  return <CeoDashboardView currentUser={user} initialData={initialData} />;
 }

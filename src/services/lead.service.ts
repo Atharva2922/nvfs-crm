@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 import { AuditService } from "./audit.service";
 import { EventBusService } from "./event-bus.service";
+import { buildCrmScopeFilter, parseCrmDateRange } from "@/lib/crm-query";
 
 export interface CreateLeadInput {
   firstName: string;
@@ -14,6 +15,20 @@ export interface CreateLeadInput {
   estimatedValue?: number;
   ownerId?: string;
   notes?: string;
+}
+
+export interface UpdateLeadInput {
+  firstName?: string;
+  lastName?: string;
+  companyName?: string;
+  email?: string;
+  phone?: string | null;
+  jobTitle?: string | null;
+  source?: "WEBSITE" | "REFERRAL" | "COLD_OUTREACH" | "CONFERENCE" | "PARTNER";
+  status?: "NEW" | "CONTACTED" | "QUALIFIED" | "UNQUALIFIED" | "LOST" | "CONVERTED";
+  estimatedValue?: number | null;
+  ownerId?: string | null;
+  notes?: string | null;
 }
 
 export interface ConvertLeadOptions {
@@ -31,48 +46,135 @@ export class LeadService {
   }
 
   /**
-   * Retrieves leads respecting sales hierarchy and scoping
+   * Retrieves leads respecting sales hierarchy, multi-filters, sorting, and pagination
    */
-  static async getLeads(user: AuthenticatedUser, filters: {
-    status?: string;
-    ownerId?: string;
-    search?: string;
-    scope?: "my" | "all";
-  } = {}) {
+  static async getLeads(
+    user: AuthenticatedUser,
+    filters: {
+      status?: string;
+      source?: string;
+      ownerId?: string;
+      search?: string;
+      datePreset?: string;
+      startDate?: string | Date;
+      endDate?: string | Date;
+      scope?: "my" | "all";
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: "asc" | "desc";
+    } = {}
+  ) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
-    const orgId = user.employee.organizationId;
-    const isExec = this.isExecutive(user);
-    const empId = user.employee.id;
-
-    const where: any = { organizationId: orgId };
-
-    if (filters.scope === "my" || (!isExec && user.roleCode !== "DEPARTMENT_HEAD")) {
-      where.ownerId = empId;
-    }
+    // Secure hierarchical scoping
+    const scopedWhere = await buildCrmScopeFilter(user, {
+      entityOwnerField: "ownerId",
+      requestedScope: filters.scope,
+      requestedOwnerId: filters.ownerId,
+    });
+    const where: any = { ...scopedWhere };
 
     if (filters.status && filters.status !== "ALL") {
       where.status = filters.status;
     }
-    if (filters.ownerId) {
-      where.ownerId = filters.ownerId;
+    if (filters.source && filters.source !== "ALL") {
+      where.source = filters.source;
     }
-    if (filters.search) {
+
+    // Date range filter
+    const dateBoundary = parseCrmDateRange(filters.datePreset, filters.startDate, filters.endDate);
+    if (dateBoundary) {
+      where.createdAt = dateBoundary;
+    }
+
+    // Search query
+    if (filters.search && filters.search.trim()) {
+      const clean = filters.search.trim();
       where.AND = [
+        ...(where.AND || []),
         {
           OR: [
-            { firstName: { contains: filters.search } },
-            { lastName: { contains: filters.search } },
-            { companyName: { contains: filters.search } },
-            { email: { contains: filters.search } },
+            { firstName: { contains: clean, mode: "insensitive" } },
+            { lastName: { contains: clean, mode: "insensitive" } },
+            { companyName: { contains: clean, mode: "insensitive" } },
+            { email: { contains: clean, mode: "insensitive" } },
+            { phone: { contains: clean, mode: "insensitive" } },
           ],
         },
       ];
     }
 
-    return db.lead.findMany({
-      where,
-      orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+    // Pagination & Sorting
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.max(1, Math.min(filters.limit || 10, 100));
+    const skip = (page - 1) * limit;
+
+    const allowedSortFields = [
+      "firstName",
+      "companyName",
+      "status",
+      "source",
+      "estimatedValue",
+      "createdAt",
+      "updatedAt",
+    ];
+    const sortBy = filters.sortBy && allowedSortFields.includes(filters.sortBy) ? filters.sortBy : "createdAt";
+    const sortOrder = filters.sortOrder === "asc" ? "asc" : "desc";
+    const orderBy: any = [{ [sortBy]: sortOrder }];
+    if (sortBy !== "createdAt") {
+      orderBy.push({ createdAt: "desc" });
+    }
+
+    const [total, leads] = await Promise.all([
+      db.lead.count({ where }),
+      db.lead.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              designation: true,
+              email: true,
+            },
+          },
+          convertedClient: {
+            select: { id: true, name: true, code: true },
+          },
+          convertedContact: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+          _count: {
+            select: { activities: true },
+          },
+        },
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      leads,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
+  }
+
+  /**
+   * Get single lead details with activities and conversion status
+   */
+  static async getLeadById(leadId: string, user: AuthenticatedUser) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const lead = await db.lead.findUnique({
+      where: { id: leadId },
       include: {
         owner: {
           select: {
@@ -81,16 +183,37 @@ export class LeadService {
             lastName: true,
             designation: true,
             email: true,
+            phone: true,
           },
         },
         convertedClient: {
-          select: { id: true, name: true, code: true },
+          select: { id: true, name: true, code: true, tier: true, status: true },
         },
-        _count: {
-          select: { activities: true },
+        convertedContact: {
+          select: { id: true, firstName: true, lastName: true, email: true, phone: true },
+        },
+        activities: {
+          orderBy: { performedAt: "desc" },
+          include: {
+            performedBy: {
+              select: {
+                id: true,
+                firstName: true,
+                lastName: true,
+                designation: true,
+              },
+            },
+          },
         },
       },
     });
+
+    if (!lead) throw new Error("Lead not found");
+    if (lead.organizationId !== user.employee.organizationId) {
+      throw new Error("Unauthorized: Lead belongs to another organization");
+    }
+
+    return lead;
   }
 
   /**
@@ -132,21 +255,172 @@ export class LeadService {
       },
     });
 
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_LEAD_CREATED",
+      entity: "Lead",
+      entityId: lead.id,
+      newValue: {
+        name: `${lead.firstName} ${lead.lastName}`,
+        company: lead.companyName,
+        email: lead.email,
+        source: lead.source,
+      },
+      metadata: { source: "lead_service" },
+    });
+
     // Notify assigned owner if not self
     if (lead.owner && lead.owner.userId && lead.owner.userId !== user.id) {
-      await EventBusService.publish({
-        type: "SYSTEM",
-        organizationId: orgId,
-        actorId: user.id,
-        targetUserIds: [lead.owner.userId],
-        title: `New Lead Assigned: ${lead.firstName} ${lead.lastName}`,
-        message: `${lead.companyName} (${lead.source}). Estimated value: ₹${lead.estimatedValue || 0}`,
-        actionUrl: "/app/crm/leads",
-        metadata: { leadId: lead.id },
-      });
+      try {
+        await EventBusService.publish({
+          type: "LEAD_ASSIGNED",
+          organizationId: orgId,
+          actorId: user.id,
+          targetUserIds: [lead.owner.userId],
+          title: `New Lead Assigned: ${lead.firstName} ${lead.lastName}`,
+          message: `${lead.companyName} (${lead.source}). Estimated value: ₹${lead.estimatedValue ? lead.estimatedValue.toLocaleString() : "0"}`,
+          actionUrl: `/app/crm/leads?id=${lead.id}`,
+          metadata: { leadId: lead.id, company: lead.companyName },
+          priority: "NORMAL",
+        });
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish LEAD_ASSIGNED:", notifErr);
+      }
     }
 
     return lead;
+  }
+
+  /**
+   * Updates full lead details (name, company, owner, value, notes, status)
+   */
+  static async updateLead(leadId: string, user: AuthenticatedUser, data: UpdateLeadInput) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const existing = await db.lead.findUnique({
+      where: { id: leadId },
+      include: { owner: true },
+    });
+    if (!existing) throw new Error("Lead not found");
+    if (existing.organizationId !== user.employee.organizationId) {
+      throw new Error("Unauthorized");
+    }
+    if ((existing.status as string) === "CONVERTED" && data.status && data.status !== "CONVERTED") {
+      throw new Error("Cannot modify status of an already converted lead");
+    }
+
+    const updatePayload: any = {};
+    if (data.firstName !== undefined) updatePayload.firstName = data.firstName.trim();
+    if (data.lastName !== undefined) updatePayload.lastName = data.lastName.trim();
+    if (data.companyName !== undefined) updatePayload.companyName = data.companyName.trim();
+    if (data.email !== undefined) updatePayload.email = data.email.trim();
+    if (data.phone !== undefined) updatePayload.phone = data.phone;
+    if (data.jobTitle !== undefined) updatePayload.jobTitle = data.jobTitle;
+    if (data.source !== undefined) updatePayload.source = data.source;
+    if (data.status !== undefined) updatePayload.status = data.status;
+    if (data.estimatedValue !== undefined) updatePayload.estimatedValue = data.estimatedValue;
+    if (data.ownerId !== undefined) updatePayload.ownerId = data.ownerId;
+    if (data.notes !== undefined) updatePayload.notes = data.notes;
+
+    const updated = await db.lead.update({
+      where: { id: leadId },
+      data: updatePayload,
+      include: {
+        owner: {
+          select: { id: true, firstName: true, lastName: true, email: true, userId: true },
+        },
+      },
+    });
+
+    // If status changed, log activity
+    if (data.status && data.status !== existing.status) {
+      await db.crmActivity.create({
+        data: {
+          organizationId: existing.organizationId,
+          leadId: existing.id,
+          type: "STATUS_CHANGE",
+          subject: `Lead Status Changed: ${existing.status} → ${data.status}`,
+          description: data.notes || `Status updated by ${user.employee.firstName} ${user.employee.lastName}`,
+          performedById: user.employee.id,
+        },
+      });
+    }
+
+    // If reassigned, notify new owner
+    if (data.ownerId && data.ownerId !== existing.ownerId) {
+      await db.crmActivity.create({
+        data: {
+          organizationId: existing.organizationId,
+          leadId: existing.id,
+          type: "NOTE",
+          subject: "Lead Reassigned",
+          description: `Assigned from ${existing.owner ? `${existing.owner.firstName} ${existing.owner.lastName}` : "Unassigned"} to ${updated.owner ? `${updated.owner.firstName} ${updated.owner.lastName}` : "new owner"}`,
+          performedById: user.employee.id,
+        },
+      });
+
+      if (updated.owner?.userId && updated.owner.userId !== user.id) {
+        try {
+          await EventBusService.publish({
+            type: "LEAD_ASSIGNED",
+            organizationId: user.employee.organizationId,
+            actorId: user.id,
+            targetUserIds: [updated.owner.userId],
+            title: `Lead Reassigned to You: ${updated.firstName} ${updated.lastName}`,
+            message: `${updated.companyName} was reassigned to you. Estimated value: ₹${updated.estimatedValue ? updated.estimatedValue.toLocaleString() : "0"}`,
+            actionUrl: `/app/crm/leads?id=${updated.id}`,
+            metadata: { leadId: updated.id, company: updated.companyName },
+            priority: "NORMAL",
+          });
+        } catch (notifErr) {
+          console.error("[Notification Warning]: Failed to publish LEAD_ASSIGNED on reassign:", notifErr);
+        }
+      }
+    }
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_LEAD_UPDATED",
+      entity: "Lead",
+      entityId: leadId,
+      previousValue: { status: existing.status, ownerId: existing.ownerId, estimatedValue: existing.estimatedValue },
+      newValue: { status: updated.status, ownerId: updated.ownerId, estimatedValue: updated.estimatedValue },
+      metadata: { source: "lead_service" },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Deletes / archives lead
+   */
+  static async deleteLead(leadId: string, user: AuthenticatedUser) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const lead = await db.lead.findUnique({ where: { id: leadId } });
+    if (!lead) throw new Error("Lead not found");
+    if (lead.organizationId !== user.employee.organizationId) {
+      throw new Error("Unauthorized");
+    }
+
+    // Permission check
+    const isExec = this.isExecutive(user);
+    if (!isExec && user.roleCode !== "DEPARTMENT_HEAD" && lead.ownerId !== user.employee.id) {
+      throw new Error("Forbidden: You do not have permission to delete this lead");
+    }
+
+    await db.lead.delete({ where: { id: leadId } });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_LEAD_DELETED",
+      entity: "Lead",
+      entityId: leadId,
+      previousValue: { name: `${lead.firstName} ${lead.lastName}`, company: lead.companyName },
+      metadata: { source: "lead_service" },
+    });
+
+    return { success: true, id: leadId };
   }
 
   /**
@@ -158,34 +432,7 @@ export class LeadService {
     status: "NEW" | "CONTACTED" | "QUALIFIED" | "UNQUALIFIED" | "LOST",
     notes?: string
   ) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-
-    const lead = await db.lead.findUnique({ where: { id: leadId } });
-    if (!lead) throw new Error("Lead not found");
-    if (lead.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
-    if (lead.status === "CONVERTED") throw new Error("Cannot modify a lead that is already converted");
-
-    const updated = await db.lead.update({
-      where: { id: leadId },
-      data: {
-        status,
-        notes: notes ? `${lead.notes ? lead.notes + "\n" : ""}${notes}` : lead.notes,
-      },
-    });
-
-    // Log activity
-    await db.crmActivity.create({
-      data: {
-        organizationId: lead.organizationId,
-        leadId: lead.id,
-        type: "STATUS_CHANGE",
-        subject: `Lead Status Changed to ${status}`,
-        description: notes || `Status updated by ${user.employee.firstName} ${user.employee.lastName}`,
-        performedById: user.employee.id,
-      },
-    });
-
-    return updated;
+    return this.updateLead(leadId, user, { status, notes });
   }
 
   /**
@@ -335,6 +582,31 @@ export class LeadService {
       },
       metadata: { source: "lead_service" },
     });
+
+    // Notify assigned owner if configured
+    if (lead.ownerId) {
+      try {
+        const ownerEmp = await db.employee.findUnique({
+          where: { id: lead.ownerId },
+          select: { userId: true },
+        });
+        if (ownerEmp?.userId) {
+          await EventBusService.publish({
+            type: "LEAD_CONVERTED",
+            organizationId: orgId,
+            actorId: user.id,
+            targetUserIds: [ownerEmp.userId],
+            title: `Lead Converted: ${lead.firstName} ${lead.lastName}`,
+            message: `Lead successfully converted to corporate client "${client.name}"${opportunity ? ` with open deal "${opportunity.name}"` : ""}.`,
+            actionUrl: `/app/crm/clients/${client.id}`,
+            metadata: { leadId: lead.id, clientId: client.id, opportunityId: opportunity?.id },
+            priority: "HIGH",
+          });
+        }
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish LEAD_CONVERTED:", notifErr);
+      }
+    }
 
     return {
       lead: updatedLead,

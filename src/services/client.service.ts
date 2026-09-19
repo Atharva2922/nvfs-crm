@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 import { AuditService } from "./audit.service";
 import { EventBusService } from "./event-bus.service";
+import { buildCrmScopeFilter, parseCrmDateRange } from "@/lib/crm-query";
 
 export interface CreateClientInput {
   name: string;
@@ -29,6 +30,13 @@ export interface ClientQueryFilters {
   ownerId?: string;
   search?: string;
   scope?: "my" | "all";
+  datePreset?: string;
+  startDate?: string | Date;
+  endDate?: string | Date;
+  page?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: "asc" | "desc";
 }
 
 export class ClientService {
@@ -38,20 +46,18 @@ export class ClientService {
   }
 
   /**
-   * Scoped client directory retrieval
+   * Scoped client directory retrieval with multi-filtering, sorting, and pagination
    */
   static async getClients(user: AuthenticatedUser, filters: ClientQueryFilters = {}) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
-    const orgId = user.employee.organizationId;
-    const isExec = this.isExecutive(user);
-    const empId = user.employee.id;
-
-    const where: any = { organizationId: orgId };
-
-    if (filters.scope === "my" || (!isExec && user.roleCode !== "DEPARTMENT_HEAD")) {
-      where.ownerId = empId;
-    }
+    // Secure hierarchical scoping
+    const scopedWhere = await buildCrmScopeFilter(user, {
+      entityOwnerField: "ownerId",
+      requestedScope: filters.scope,
+      requestedOwnerId: filters.ownerId,
+    });
+    const where: any = { ...scopedWhere };
 
     if (filters.status && filters.status !== "ALL") {
       where.status = filters.status;
@@ -62,45 +68,81 @@ export class ClientService {
     if (filters.industry && filters.industry !== "ALL") {
       where.industry = filters.industry;
     }
-    if (filters.ownerId) {
-      where.ownerId = filters.ownerId;
+
+    // Date range filter
+    const dateBoundary = parseCrmDateRange(filters.datePreset, filters.startDate, filters.endDate);
+    if (dateBoundary) {
+      where.createdAt = dateBoundary;
     }
-    if (filters.search) {
+
+    // Search query
+    if (filters.search && filters.search.trim()) {
+      const clean = filters.search.trim();
       where.AND = [
+        ...(where.AND || []),
         {
           OR: [
-            { name: { contains: filters.search } },
-            { code: { contains: filters.search } },
-            { email: { contains: filters.search } },
-            { industry: { contains: filters.search } },
+            { name: { contains: clean, mode: "insensitive" } },
+            { code: { contains: clean, mode: "insensitive" } },
+            { email: { contains: clean, mode: "insensitive" } },
+            { phone: { contains: clean, mode: "insensitive" } },
+            { industry: { contains: clean, mode: "insensitive" } },
           ],
         },
       ];
     }
 
-    return db.client.findMany({
-      where,
-      orderBy: [{ status: "asc" }, { updatedAt: "desc" }],
-      include: {
-        owner: {
-          select: {
-            id: true,
-            firstName: true,
-            lastName: true,
-            designation: true,
-            email: true,
+    // Pagination & Sorting
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.max(1, Math.min(filters.limit || 10, 100));
+    const skip = (page - 1) * limit;
+
+    const allowedSortFields = ["name", "code", "tier", "status", "industry", "createdAt", "updatedAt"];
+    const sortBy = filters.sortBy && allowedSortFields.includes(filters.sortBy) ? filters.sortBy : "createdAt";
+    const sortOrder = filters.sortOrder === "asc" ? "asc" : "desc";
+    const orderBy: any = [{ [sortBy]: sortOrder }];
+    if (sortBy !== "createdAt") {
+      orderBy.push({ createdAt: "desc" });
+    }
+
+    const [total, clients] = await Promise.all([
+      db.client.count({ where }),
+      db.client.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          owner: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              designation: true,
+              email: true,
+            },
+          },
+          _count: {
+            select: {
+              contacts: true,
+              opportunities: true,
+              activities: true,
+              tasks: true,
+            },
           },
         },
-        _count: {
-          select: {
-            contacts: true,
-            opportunities: true,
-            activities: true,
-            tasks: true,
-          },
-        },
-      },
-    });
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      clients,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   /**
@@ -278,6 +320,31 @@ export class ClientService {
       metadata: { source: "client_service" },
     });
 
+    // Notify assigned owner if not self
+    if (client.ownerId && client.ownerId !== user.employee.id) {
+      try {
+        const ownerEmp = await db.employee.findUnique({
+          where: { id: client.ownerId },
+          select: { userId: true },
+        });
+        if (ownerEmp?.userId) {
+          await EventBusService.publish({
+            type: "CLIENT_ASSIGNED",
+            organizationId: orgId,
+            actorId: user.id,
+            targetUserIds: [ownerEmp.userId],
+            title: `Client Account Assigned: ${client.name}`,
+            message: `You were assigned as owner of client account ${client.name} (${client.code}).`,
+            actionUrl: `/app/crm/clients/${client.id}`,
+            metadata: { clientId: client.id, clientCode: client.code },
+            priority: "NORMAL",
+          });
+        }
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish CLIENT_ASSIGNED on create:", notifErr);
+      }
+    }
+
     return client;
   }
 
@@ -294,6 +361,85 @@ export class ClientService {
     const updated = await db.client.update({
       where: { id: clientId },
       data,
+    });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_CLIENT_UPDATED",
+      entity: "Client",
+      entityId: clientId,
+      previousValue: { name: existing.name, status: existing.status, tier: existing.tier },
+      newValue: { name: updated.name, status: updated.status, tier: updated.tier },
+      metadata: { source: "client_service" },
+    });
+
+    // Notify new owner if reassigned
+    if (data.ownerId && data.ownerId !== existing.ownerId && data.ownerId !== user.employee.id) {
+      try {
+        const ownerEmp = await db.employee.findUnique({
+          where: { id: data.ownerId },
+          select: { userId: true },
+        });
+        if (ownerEmp?.userId) {
+          await EventBusService.publish({
+            type: "CLIENT_ASSIGNED",
+            organizationId: existing.organizationId,
+            actorId: user.id,
+            targetUserIds: [ownerEmp.userId],
+            title: `Client Account Reassigned: ${updated.name}`,
+            message: `Ownership of client account ${updated.name} (${updated.code}) was transferred to you.`,
+            actionUrl: `/app/crm/clients/${updated.id}`,
+            metadata: { clientId: updated.id, clientCode: updated.code },
+            priority: "NORMAL",
+          });
+        }
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish CLIENT_ASSIGNED on update:", notifErr);
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Archive / deactivate client account
+   */
+  static async archiveClient(clientId: string, user: AuthenticatedUser) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const existing = await db.client.findUnique({ where: { id: clientId } });
+    if (!existing) throw new Error("Client not found");
+    if (existing.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+
+    const isExec = this.isExecutive(user);
+    if (!isExec && user.roleCode !== "DEPARTMENT_HEAD" && existing.ownerId !== user.employee.id) {
+      throw new Error("Forbidden: You do not have permission to archive this client");
+    }
+
+    const updated = await db.client.update({
+      where: { id: clientId },
+      data: { status: "INACTIVE" },
+    });
+
+    await db.crmActivity.create({
+      data: {
+        organizationId: existing.organizationId,
+        clientId,
+        type: "STATUS_CHANGE",
+        subject: "Client Account Deactivated / Archived",
+        description: `Status changed to INACTIVE by ${user.employee.firstName} ${user.employee.lastName}`,
+        performedById: user.employee.id,
+      },
+    });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_CLIENT_ARCHIVED",
+      entity: "Client",
+      entityId: clientId,
+      previousValue: { status: existing.status },
+      newValue: { status: "INACTIVE" },
+      metadata: { source: "client_service" },
     });
 
     return updated;
@@ -352,17 +498,105 @@ export class ClientService {
       },
     });
 
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_CONTACT_CREATED",
+      entity: "Contact",
+      entityId: contact.id,
+      newValue: { name: `${contact.firstName} ${contact.lastName}`, email: contact.email, clientId },
+      metadata: { source: "client_service" },
+    });
+
     return contact;
+  }
+
+  /**
+   * Update contact details
+   */
+  static async updateContact(contactId: string, user: AuthenticatedUser, data: {
+    firstName?: string;
+    lastName?: string;
+    email?: string;
+    phone?: string | null;
+    designation?: string | null;
+    department?: string | null;
+    isPrimary?: boolean;
+    notes?: string | null;
+  }) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const existing = await db.contact.findUnique({
+      where: { id: contactId },
+      include: { client: true },
+    });
+    if (!existing) throw new Error("Contact not found");
+    if (existing.client.organizationId !== user.employee.organizationId) {
+      throw new Error("Unauthorized");
+    }
+
+    if (data.isPrimary) {
+      await db.contact.updateMany({
+        where: { clientId: existing.clientId, isPrimary: true },
+        data: { isPrimary: false },
+      });
+    }
+
+    const updated = await db.contact.update({
+      where: { id: contactId },
+      data,
+    });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_CONTACT_UPDATED",
+      entity: "Contact",
+      entityId: contactId,
+      previousValue: { name: `${existing.firstName} ${existing.lastName}`, email: existing.email },
+      newValue: { name: `${updated.firstName} ${updated.lastName}`, email: updated.email },
+      metadata: { source: "client_service" },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Delete contact
+   */
+  static async deleteContact(contactId: string, user: AuthenticatedUser) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const existing = await db.contact.findUnique({
+      where: { id: contactId },
+      include: { client: true },
+    });
+    if (!existing) throw new Error("Contact not found");
+    if (existing.client.organizationId !== user.employee.organizationId) {
+      throw new Error("Unauthorized");
+    }
+
+    await db.contact.delete({ where: { id: contactId } });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_CONTACT_DELETED",
+      entity: "Contact",
+      entityId: contactId,
+      previousValue: { name: `${existing.firstName} ${existing.lastName}`, email: existing.email, clientId: existing.clientId },
+      metadata: { source: "client_service" },
+    });
+
+    return { success: true, id: contactId };
   }
 
   /**
    * Log an interaction on the Customer 360 timeline
    */
   static async logActivity(clientId: string, user: AuthenticatedUser, data: {
-    type: "CALL" | "MEETING" | "EMAIL" | "NOTE" | "TASK" | "PROPOSAL" | "STATUS_CHANGE";
+    type: "CALL" | "MEETING" | "EMAIL" | "NOTE" | "TASK" | "PROPOSAL" | "STATUS_CHANGE" | "DOCUMENT";
     subject: string;
     description?: string;
     opportunityId?: string;
+    metadata?: string | null;
   }) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
@@ -370,7 +604,7 @@ export class ClientService {
     if (!client) throw new Error("Client not found");
     if (client.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
 
-    return db.crmActivity.create({
+    const activity = await db.crmActivity.create({
       data: {
         organizationId: client.organizationId,
         clientId,
@@ -378,14 +612,26 @@ export class ClientService {
         type: data.type,
         subject: data.subject,
         description: data.description || null,
+        metadata: data.metadata || null,
         performedById: user.employee.id,
         performedAt: new Date(),
       },
       include: {
         performedBy: {
-          select: { firstName: true, lastName: true, designation: true },
+          select: { id: true, firstName: true, lastName: true, designation: true },
         },
       },
     });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: `CRM_ACTIVITY_${data.type}`,
+      entity: "CrmActivity",
+      entityId: activity.id,
+      newValue: { subject: data.subject, type: data.type, clientId },
+      metadata: { source: "client_service" },
+    });
+
+    return activity;
   }
 }

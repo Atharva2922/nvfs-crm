@@ -29,12 +29,28 @@ export async function GET(req: NextRequest) {
       departmentId: searchParams.get("departmentId") || undefined,
       assigneeId: searchParams.get("assigneeId") || undefined,
       creatorId: searchParams.get("creatorId") || undefined,
+      relatedClientId: searchParams.get("relatedClientId") || searchParams.get("clientId") || undefined,
+      quickFilter: (searchParams.get("quickFilter") as any) || undefined,
       scope: (searchParams.get("scope") as "my" | "department" | "all") || "all",
       search: searchParams.get("search") || undefined,
+      page: searchParams.has("page") ? parseInt(searchParams.get("page")!, 10) : undefined,
+      limit: searchParams.has("limit") ? parseInt(searchParams.get("limit")!, 10) : undefined,
+      sortBy: searchParams.get("sortBy") || undefined,
+      sortOrder: (searchParams.get("sortOrder") as "asc" | "desc") || undefined,
     };
 
-    const tasks = await TaskService.getTasks(user, filters);
-    return successResponse({ tasks });
+    const result = await TaskService.getTasks(user, filters);
+    const taskList = result.tasks || result;
+    return successResponse(
+      { tasks: taskList },
+      200,
+      {
+        total: result.total ?? taskList.length,
+        page: result.page ?? 1,
+        limit: result.limit ?? taskList.length,
+        totalPages: result.totalPages ?? 1,
+      } as any
+    );
   } catch (error: any) {
     console.error("[Tasks GET Error]:", error);
     return errorResponse(error.message || "Failed to retrieve tasks", "INTERNAL_ERROR", 500);

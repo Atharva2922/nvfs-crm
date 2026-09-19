@@ -35,11 +35,27 @@ export async function GET(req: NextRequest) {
       industry: searchParams.get("industry") || undefined,
       ownerId: searchParams.get("ownerId") || undefined,
       search: searchParams.get("search") || undefined,
+      datePreset: searchParams.get("datePreset") || undefined,
+      startDate: searchParams.get("startDate") || undefined,
+      endDate: searchParams.get("endDate") || undefined,
       scope: (searchParams.get("scope") as "my" | "all") || "all",
+      page: searchParams.has("page") ? parseInt(searchParams.get("page")!, 10) : undefined,
+      limit: searchParams.has("limit") ? parseInt(searchParams.get("limit")!, 10) : undefined,
+      sortBy: searchParams.get("sortBy") || undefined,
+      sortOrder: (searchParams.get("sortOrder") as "asc" | "desc") || undefined,
     };
 
-    const clients = await ClientService.getClients(user, filters);
-    return successResponse({ clients });
+    const result = await ClientService.getClients(user, filters);
+    return successResponse(
+      { clients: result.clients },
+      200,
+      {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      } as any
+    );
   } catch (error: any) {
     console.error("[CRM Clients GET Error]:", error);
     return errorResponse(error.message || "Failed to retrieve clients", "INTERNAL_ERROR", 500);

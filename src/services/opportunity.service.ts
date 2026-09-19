@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 import { AuditService } from "./audit.service";
 import { EventBusService } from "./event-bus.service";
+import { buildCrmScopeFilter, parseCrmDateRange } from "@/lib/crm-query";
 
 export interface CreateOpportunityInput {
   name: string;
@@ -22,65 +23,153 @@ export class OpportunityService {
   }
 
   /**
-   * Scoped deals list retrieval
+   * Scoped deals list retrieval with advanced multi-filtering, relational search, sorting, and pagination
    */
-  static async getOpportunities(user: AuthenticatedUser, filters: {
-    stage?: string;
-    clientId?: string;
-    ownerId?: string;
-    search?: string;
-    scope?: "my" | "all";
-  } = {}) {
+  static async getOpportunities(
+    user: AuthenticatedUser,
+    filters: {
+      stage?: string;
+      clientId?: string;
+      ownerId?: string;
+      search?: string;
+      minValue?: number;
+      maxValue?: number;
+      minProbability?: number;
+      maxProbability?: number;
+      closeDatePreset?: string;
+      closeDateFrom?: string | Date;
+      closeDateTo?: string | Date;
+      datePreset?: string;
+      startDate?: string | Date;
+      endDate?: string | Date;
+      scope?: "my" | "all";
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: "asc" | "desc";
+    } = {}
+  ) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
-    const orgId = user.employee.organizationId;
-    const isExec = this.isExecutive(user);
-    const empId = user.employee.id;
-
-    const where: any = { organizationId: orgId };
-
-    if (filters.scope === "my" || (!isExec && user.roleCode !== "DEPARTMENT_HEAD")) {
-      where.ownerId = empId;
-    }
+    // Secure hierarchical scoping
+    const scopedWhere = await buildCrmScopeFilter(user, {
+      entityOwnerField: "ownerId",
+      requestedScope: filters.scope,
+      requestedOwnerId: filters.ownerId,
+    });
+    const where: any = { ...scopedWhere };
 
     if (filters.stage && filters.stage !== "ALL") {
       where.stage = filters.stage;
     }
-    if (filters.clientId) {
+    if (filters.clientId && filters.clientId !== "ALL") {
       where.clientId = filters.clientId;
     }
-    if (filters.ownerId) {
-      where.ownerId = filters.ownerId;
+
+    // Numeric value filter
+    if (filters.minValue !== undefined || filters.maxValue !== undefined) {
+      where.value = {};
+      if (filters.minValue !== undefined && !isNaN(Number(filters.minValue))) {
+        where.value.gte = Number(filters.minValue);
+      }
+      if (filters.maxValue !== undefined && !isNaN(Number(filters.maxValue))) {
+        where.value.lte = Number(filters.maxValue);
+      }
     }
-    if (filters.search) {
+
+    // Probability filter
+    if (filters.minProbability !== undefined || filters.maxProbability !== undefined) {
+      where.probability = {};
+      if (filters.minProbability !== undefined && !isNaN(Number(filters.minProbability))) {
+        where.probability.gte = Number(filters.minProbability);
+      }
+      if (filters.maxProbability !== undefined && !isNaN(Number(filters.maxProbability))) {
+        where.probability.lte = Number(filters.maxProbability);
+      }
+    }
+
+    // Expected close date range
+    const closeBoundary = parseCrmDateRange(filters.closeDatePreset, filters.closeDateFrom, filters.closeDateTo);
+    if (closeBoundary) {
+      where.expectedCloseDate = closeBoundary;
+    }
+
+    // Created date range
+    const createdBoundary = parseCrmDateRange(filters.datePreset, filters.startDate, filters.endDate);
+    if (createdBoundary) {
+      where.createdAt = createdBoundary;
+    }
+
+    // Relational search: Deal name, client name, or owner name
+    if (filters.search && filters.search.trim()) {
+      const clean = filters.search.trim();
       where.AND = [
+        ...(where.AND || []),
         {
           OR: [
-            { name: { contains: filters.search } },
-            { client: { name: { contains: filters.search } } },
+            { name: { contains: clean, mode: "insensitive" } },
+            { client: { name: { contains: clean, mode: "insensitive" } } },
+            { owner: { firstName: { contains: clean, mode: "insensitive" } } },
+            { owner: { lastName: { contains: clean, mode: "insensitive" } } },
           ],
         },
       ];
     }
 
-    return db.opportunity.findMany({
-      where,
-      orderBy: [{ expectedCloseDate: "asc" }, { value: "desc" }],
-      include: {
-        client: {
-          select: { id: true, name: true, code: true, tier: true },
+    // Pagination & Sorting
+    const page = Math.max(1, filters.page || 1);
+    const limit = Math.max(1, Math.min(filters.limit || 50, 100));
+    const skip = (page - 1) * limit;
+
+    const allowedSortFields = [
+      "name",
+      "value",
+      "stage",
+      "probability",
+      "expectedCloseDate",
+      "createdAt",
+      "updatedAt",
+    ];
+    const sortBy = filters.sortBy && allowedSortFields.includes(filters.sortBy) ? filters.sortBy : "expectedCloseDate";
+    const sortOrder = filters.sortOrder === "desc" ? "desc" : "asc";
+    const orderBy: any = [{ [sortBy]: sortOrder }];
+    if (sortBy !== "createdAt") {
+      orderBy.push({ createdAt: "desc" });
+    }
+
+    const [total, opportunities] = await Promise.all([
+      db.opportunity.count({ where }),
+      db.opportunity.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy,
+        include: {
+          client: {
+            select: { id: true, name: true, code: true, tier: true },
+          },
+          contact: {
+            select: { id: true, firstName: true, lastName: true, email: true },
+          },
+          owner: {
+            select: { id: true, firstName: true, lastName: true, designation: true },
+          },
+          _count: {
+            select: { activities: true },
+          },
         },
-        contact: {
-          select: { id: true, firstName: true, lastName: true, email: true },
-        },
-        owner: {
-          select: { id: true, firstName: true, lastName: true, designation: true },
-        },
-        _count: {
-          select: { activities: true },
-        },
-      },
-    });
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      opportunities,
+      total,
+      page,
+      limit,
+      totalPages,
+    };
   }
 
   /**
@@ -195,6 +284,25 @@ export class OpportunityService {
       },
     });
 
+    // Notify assigned owner if not self
+    if (opportunity.owner?.userId && opportunity.owner.userId !== user.id) {
+      try {
+        await EventBusService.publish({
+          type: "OPPORTUNITY_ASSIGNED",
+          organizationId: orgId,
+          actorId: user.id,
+          targetUserIds: [opportunity.owner.userId],
+          title: `Deal Assigned: ${opportunity.name}`,
+          message: `You were assigned as owner of deal "${opportunity.name}" for ${client.name}. Value: ₹${opportunity.value.toLocaleString()}`,
+          actionUrl: `/app/crm/opportunities/${opportunity.id}`,
+          metadata: { opportunityId: opportunity.id, clientId: client.id, value: opportunity.value },
+          priority: "NORMAL",
+        });
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish OPPORTUNITY_ASSIGNED on create:", notifErr);
+      }
+    }
+
     return opportunity;
   }
 
@@ -247,6 +355,208 @@ export class OpportunityService {
       },
     });
 
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: newStage === "CLOSED_WON" ? "CRM_OPPORTUNITY_WON" : newStage === "CLOSED_LOST" ? "CRM_OPPORTUNITY_LOST" : "CRM_OPPORTUNITY_STAGE_CHANGED",
+      entity: "Opportunity",
+      entityId: opp.id,
+      previousValue: { stage: opp.stage, probability: opp.probability },
+      newValue: { stage: newStage, probability },
+      metadata: { source: "opportunity_service" },
+    });
+
+    // Publish stage notification to owner and stakeholders
+    try {
+      const targetUserIds: string[] = [];
+      if (opp.owner?.userId) {
+        targetUserIds.push(opp.owner.userId);
+      }
+
+      if (targetUserIds.length > 0) {
+        if (newStage === "CLOSED_WON") {
+          await EventBusService.publish({
+            type: "OPPORTUNITY_WON",
+            organizationId: opp.organizationId,
+            actorId: user.id,
+            targetUserIds,
+            title: `Deal Won: ${opp.name}`,
+            message: `Congratulations! Deal "${opp.name}" for ${opp.client.name} valued at ₹${opp.value.toLocaleString()} was successfully WON!`,
+            actionUrl: `/app/crm/opportunities/${opp.id}`,
+            metadata: { opportunityId: opp.id, clientId: opp.clientId, value: opp.value, stage: newStage },
+            priority: "HIGH",
+          });
+        } else if (newStage === "CLOSED_LOST") {
+          await EventBusService.publish({
+            type: "OPPORTUNITY_LOST",
+            organizationId: opp.organizationId,
+            actorId: user.id,
+            targetUserIds,
+            title: `Deal Closed Lost: ${opp.name}`,
+            message: `Deal "${opp.name}" for ${opp.client.name} was marked Closed Lost.${lossReason ? ` Reason: ${lossReason}` : ""}`,
+            actionUrl: `/app/crm/opportunities/${opp.id}`,
+            metadata: { opportunityId: opp.id, clientId: opp.clientId, value: opp.value, stage: newStage, lossReason },
+            priority: "NORMAL",
+          });
+        } else {
+          await EventBusService.publish({
+            type: "OPPORTUNITY_STAGE_CHANGED",
+            organizationId: opp.organizationId,
+            actorId: user.id,
+            targetUserIds,
+            title: `Deal Advanced: ${opp.name}`,
+            message: `Deal "${opp.name}" moved to stage ${newStage.replace(/_/g, " ")}. Current value: ₹${opp.value.toLocaleString()}`,
+            actionUrl: `/app/crm/opportunities/${opp.id}`,
+            metadata: { opportunityId: opp.id, clientId: opp.clientId, value: opp.value, stage: newStage },
+            priority: "NORMAL",
+          });
+        }
+      }
+    } catch (notifErr) {
+      console.error("[Notification Warning]: Failed to publish opportunity stage notification:", notifErr);
+    }
+
     return updated;
+  }
+
+  /**
+   * Retrieves single deal opportunity by ID with client, contact, and owner
+   */
+  static async getOpportunityById(oppId: string, user: AuthenticatedUser) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const opp = await db.opportunity.findUnique({
+      where: { id: oppId },
+      include: {
+        client: { select: { id: true, name: true, code: true, tier: true, status: true } },
+        contact: { select: { id: true, firstName: true, lastName: true, email: true, phone: true } },
+        owner: { select: { id: true, firstName: true, lastName: true, designation: true, email: true } },
+        activities: {
+          orderBy: { performedAt: "desc" },
+          include: { performedBy: { select: { firstName: true, lastName: true } } },
+        },
+      },
+    });
+
+    if (!opp) throw new Error("Opportunity not found");
+    if (opp.organizationId !== user.employee.organizationId) {
+      throw new Error("Unauthorized: Opportunity belongs to another organization");
+    }
+
+    return opp;
+  }
+
+  /**
+   * Full deal opportunity update
+   */
+  static async updateOpportunity(oppId: string, user: AuthenticatedUser, data: {
+    name?: string;
+    value?: number;
+    stage?: "DISCOVERY" | "PROPOSAL" | "NEGOTIATION" | "CLOSED_WON" | "CLOSED_LOST";
+    probability?: number;
+    expectedCloseDate?: string | Date | null;
+    contactId?: string | null;
+    ownerId?: string | null;
+    lossReason?: string | null;
+    notes?: string | null;
+  }) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const existing = await db.opportunity.findUnique({
+      where: { id: oppId },
+      include: { client: true, owner: true },
+    });
+
+    if (!existing) throw new Error("Opportunity not found");
+    if (existing.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+
+    const updatePayload: any = {};
+    if (data.name !== undefined) updatePayload.name = data.name.trim();
+    if (data.value !== undefined) updatePayload.value = Number(data.value);
+    if (data.probability !== undefined) updatePayload.probability = Number(data.probability);
+    if (data.expectedCloseDate !== undefined) {
+      updatePayload.expectedCloseDate = data.expectedCloseDate ? new Date(data.expectedCloseDate) : existing.expectedCloseDate;
+    }
+    if (data.contactId !== undefined) updatePayload.contactId = data.contactId;
+    if (data.ownerId !== undefined) updatePayload.ownerId = data.ownerId;
+    if (data.notes !== undefined) updatePayload.notes = data.notes;
+    if (data.lossReason !== undefined) updatePayload.lossReason = data.lossReason;
+
+    // Handle stage change
+    if (data.stage && data.stage !== existing.stage) {
+      updatePayload.stage = data.stage;
+      if (data.probability === undefined) {
+        if (data.stage === "DISCOVERY") updatePayload.probability = 25;
+        if (data.stage === "PROPOSAL") updatePayload.probability = 50;
+        if (data.stage === "NEGOTIATION") updatePayload.probability = 75;
+        if (data.stage === "CLOSED_WON") updatePayload.probability = 100;
+        if (data.stage === "CLOSED_LOST") updatePayload.probability = 0;
+      }
+      if (data.stage === "CLOSED_WON" || data.stage === "CLOSED_LOST") {
+        updatePayload.actualCloseDate = new Date();
+      }
+
+      await db.crmActivity.create({
+        data: {
+          organizationId: existing.organizationId,
+          clientId: existing.clientId,
+          opportunityId: existing.id,
+          type: "STATUS_CHANGE",
+          subject: `Deal Stage: ${data.stage.replace(/_/g, " ")}`,
+          description: `Deal "${existing.name}" moved from ${existing.stage} to ${data.stage}. Value: ₹${(data.value ?? existing.value).toLocaleString()}`,
+          performedById: user.employee.id,
+        },
+      });
+    }
+
+    const updated = await db.opportunity.update({
+      where: { id: oppId },
+      data: updatePayload,
+      include: {
+        client: { select: { id: true, name: true, code: true } },
+        contact: { select: { id: true, firstName: true, lastName: true } },
+        owner: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_OPPORTUNITY_UPDATED",
+      entity: "Opportunity",
+      entityId: oppId,
+      previousValue: { name: existing.name, value: existing.value, stage: existing.stage },
+      newValue: { name: updated.name, value: updated.value, stage: updated.stage },
+      metadata: { source: "opportunity_service" },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Delete deal opportunity
+   */
+  static async deleteOpportunity(oppId: string, user: AuthenticatedUser) {
+    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const existing = await db.opportunity.findUnique({ where: { id: oppId } });
+    if (!existing) throw new Error("Opportunity not found");
+    if (existing.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+
+    const isExec = this.isExecutive(user);
+    if (!isExec && user.roleCode !== "DEPARTMENT_HEAD" && existing.ownerId !== user.employee.id) {
+      throw new Error("Forbidden: You do not have permission to delete this opportunity");
+    }
+
+    await db.opportunity.delete({ where: { id: oppId } });
+
+    await AuditService.logMutation({
+      actorId: user.id,
+      action: "CRM_OPPORTUNITY_DELETED",
+      entity: "Opportunity",
+      entityId: oppId,
+      previousValue: { name: existing.name, value: existing.value, clientId: existing.clientId },
+      metadata: { source: "opportunity_service" },
+    });
+
+    return { success: true, id: oppId };
   }
 }

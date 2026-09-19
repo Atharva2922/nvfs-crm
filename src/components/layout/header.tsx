@@ -20,7 +20,12 @@ import {
 import { SystemRoleCode, AuthenticatedUser } from "@/types";
 import { cn } from "@/lib/utils";
 import { NotificationBell } from "@/modules/notifications/components/notification-bell";
+import { CommunicationHeaderWidget } from "@/modules/communications/components/communication-header-widget";
+import { GlobalAIButton } from "@/modules/ai/components/global-ai-button";
 import { ThemeToggle } from "@/components/theme/theme-toggle";
+
+import { useAuth } from "@/components/providers/auth-provider";
+import { CrmGlobalSearchDialog } from "@/components/common/crm-global-search-dialog";
 
 interface HeaderProps {
   currentRole?: SystemRoleCode;
@@ -30,34 +35,23 @@ interface HeaderProps {
 export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
-  const [currentUser, setCurrentUser] = useState<AuthenticatedUser | null>(null);
-  const [loadingUser, setLoadingUser] = useState(true);
+  const { user: currentUser } = useAuth();
   const [roleDropdownOpen, setRoleDropdownOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [globalSearchOpen, setGlobalSearchOpen] = useState(false);
 
-  // Fetch the currently signed-in user profile
+  // Global Ctrl+K / Cmd+K shortcut listener
   useEffect(() => {
-    let isMounted = true;
-    async function fetchUser() {
-      try {
-        const res = await fetch("/api/auth/me");
-        if (res.ok) {
-          const json = await res.json();
-          if (json.success && json.data) {
-            if (isMounted) setCurrentUser(json.data);
-          }
-        }
-      } catch (err) {
-        console.error("Failed to fetch user session:", err);
-      } finally {
-        if (isMounted) setLoadingUser(false);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        setGlobalSearchOpen((prev) => !prev);
       }
-    }
-    fetchUser();
-    return () => {
-      isMounted = false;
     };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
 
   // Generate breadcrumb items
   const pathSegments = pathname.split("/").filter(Boolean);
@@ -112,14 +106,18 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
 
       {/* Right: Quick Tools & Signed-In Account Profile */}
       <div className="flex items-center gap-3">
-        {/* Search Bar Input */}
-        <div className="relative hidden md:flex items-center">
-          <Search className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500" />
-          <input
-            type="text"
-            placeholder="Search records, entities, or commands (Ctrl+K)..."
-            className="h-8 w-60 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 pl-8 pr-3 text-xs text-slate-900 dark:text-slate-200 placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 transition-colors"
-          />
+        {/* Search Bar Input (Triggers Global Command Palette) */}
+        <div
+          onClick={() => setGlobalSearchOpen(true)}
+          className="relative hidden md:flex items-center cursor-pointer group"
+        >
+          <Search className="absolute left-2.5 h-3.5 w-3.5 text-slate-400 dark:text-slate-500 group-hover:text-blue-500 transition-colors" />
+          <div className="h-8 w-64 rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/80 pl-8 pr-10 text-xs text-slate-400 dark:text-slate-500 flex items-center justify-between group-hover:border-blue-500/50 transition-colors">
+            <span className="truncate">Search CRM records...</span>
+            <kbd className="hidden lg:inline-flex items-center px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[10px] font-mono font-medium text-slate-500 dark:text-slate-400">
+              Ctrl+K
+            </kbd>
+          </div>
         </div>
 
         {/* Database Status Pill */}
@@ -131,6 +129,12 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
         {/* Light / Dark Mode Switch Toggle */}
         <ThemeToggle />
 
+        {/* Global AI Intelligence Assistant */}
+        <GlobalAIButton />
+
+        {/* Communication Center & Quick Message */}
+        <CommunicationHeaderWidget />
+
         {/* Interactive Notification Bell */}
         <NotificationBell />
 
@@ -138,16 +142,26 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
         <div className="relative">
           <button
             onClick={() => setRoleDropdownOpen(!roleDropdownOpen)}
+            suppressHydrationWarning
             className="flex items-center gap-2 rounded-md border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/90 px-2.5 py-1 text-xs hover:border-blue-400/50 dark:hover:border-blue-500/40 transition-all shadow-xs"
           >
-            <div className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-blue-600 to-indigo-900 text-[11px] font-bold text-white shadow-xs">
+            <div
+              suppressHydrationWarning
+              className="flex h-6 w-6 items-center justify-center rounded bg-gradient-to-br from-blue-600 to-indigo-900 text-[11px] font-bold text-white shadow-xs"
+            >
               {avatarLetter}
             </div>
             <div className="flex flex-col text-left">
-              <span className="text-[11px] font-medium text-slate-800 dark:text-slate-200 leading-tight truncate max-w-[120px]">
+              <span
+                suppressHydrationWarning
+                className="text-[11px] font-medium text-slate-800 dark:text-slate-200 leading-tight truncate max-w-[120px]"
+              >
                 {displayName}
               </span>
-              <span className="text-[9px] text-blue-600 dark:text-blue-400 font-medium leading-none truncate max-w-[120px]">
+              <span
+                suppressHydrationWarning
+                className="text-[9px] text-blue-600 dark:text-blue-400 font-medium leading-none truncate max-w-[120px]"
+              >
                 {displayTitle}
               </span>
             </div>
@@ -160,14 +174,23 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
               {/* Header: Signed-In Account Details */}
               <div className="p-3 rounded-md bg-slate-50 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-800/80 space-y-2">
                 <div className="flex items-center gap-2.5">
-                  <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-900 text-sm font-bold text-white shadow-md">
+                  <div
+                    suppressHydrationWarning
+                    className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-indigo-900 text-sm font-bold text-white shadow-md"
+                  >
                     {avatarLetter}
                   </div>
                   <div className="flex flex-col overflow-hidden">
-                    <span className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate">
+                    <span
+                      suppressHydrationWarning
+                      className="text-xs font-semibold text-slate-900 dark:text-slate-100 truncate"
+                    >
                       {displayName}
                     </span>
-                    <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate">
+                    <span
+                      suppressHydrationWarning
+                      className="text-[11px] text-blue-600 dark:text-blue-400 font-medium truncate"
+                    >
                       {displayTitle}
                     </span>
                   </div>
@@ -230,6 +253,12 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
           )}
         </div>
       </div>
+
+      {/* Global CRM Search & Command Palette Modal */}
+      <CrmGlobalSearchDialog
+        isOpen={globalSearchOpen}
+        onClose={() => setGlobalSearchOpen(false)}
+      />
     </header>
   );
 }

@@ -2,7 +2,23 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import Link from "next/link";
-import { Bell, Check, CheckCheck, Clock, ExternalLink, ShieldAlert, Calendar, CheckSquare, Sparkles } from "lucide-react";
+import {
+  Bell,
+  Check,
+  CheckCheck,
+  Clock,
+  ExternalLink,
+  ShieldAlert,
+  Calendar,
+  CheckSquare,
+  Sparkles,
+  TrendingUp,
+  Award,
+  IndianRupee,
+  UserCheck,
+  Building,
+  FileText,
+} from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface NotificationItem {
@@ -93,12 +109,39 @@ export function NotificationBell() {
     switch (type) {
       case "TASK_ASSIGNED":
       case "TASK_DUE":
+      case "TASK_OVERDUE":
       case "TASK_COMPLETED":
         return <CheckSquare className="h-3.5 w-3.5 text-amber-400" />;
+      case "LEAD_ASSIGNED":
+      case "LEAD_CONVERTED":
+        return <UserCheck className="h-3.5 w-3.5 text-indigo-400" />;
+      case "CLIENT_ASSIGNED":
+      case "CLIENT_UPDATED":
+        return <Building className="h-3.5 w-3.5 text-blue-400" />;
+      case "OPPORTUNITY_WON":
+        return <Award className="h-3.5 w-3.5 text-teal-400" />;
+      case "OPPORTUNITY_ASSIGNED":
+      case "OPPORTUNITY_STAGE_CHANGED":
+      case "OPPORTUNITY_LOST":
+        return <TrendingUp className="h-3.5 w-3.5 text-emerald-400" />;
+      case "PAYMENT_RECEIVED":
+        return <IndianRupee className="h-3.5 w-3.5 text-emerald-400" />;
+      case "PROPOSAL_CREATED":
+      case "PROPOSAL_APPROVED":
+      case "PROPOSAL_REJECTED":
+      case "PROPOSAL_SENT":
+      case "PROPOSAL_ACCEPTED":
+      case "PROPOSAL_EXPIRED":
+        return <FileText className="h-3.5 w-3.5 text-rose-400" />;
+      case "DOCUMENT_UPLOADED":
+        return <FileText className="h-3.5 w-3.5 text-cyan-400" />;
       case "LEAVE_REQUEST":
       case "LEAVE_APPROVED":
       case "LEAVE_REJECTED":
         return <Calendar className="h-3.5 w-3.5 text-purple-400" />;
+      case "MEETING_CREATED":
+      case "MEETING_CANCELLED":
+      case "MEETING_UPCOMING":
       case "MEETING_REMINDER":
         return <Clock className="h-3.5 w-3.5 text-blue-400" />;
       default:

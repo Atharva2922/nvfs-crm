@@ -3,7 +3,8 @@
 import React, { useState, useEffect } from "react";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
-import { FolderKanban, Layers, User, Calendar, CheckCircle2, Clock } from "lucide-react";
+import { FolderKanban, Layers, User, Calendar, CheckCircle2, Clock, MessageSquare, X } from "lucide-react";
+import { RecordDiscussionWidget } from "@/modules/communications/record-discussion-widget";
 
 interface ProjectItem {
   id: string;
@@ -20,6 +21,7 @@ interface ProjectItem {
 export default function MyProjectsPage() {
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [discussionProject, setDiscussionProject] = useState<ProjectItem | null>(null);
 
   useEffect(() => {
     async function fetchProjects() {
@@ -119,8 +121,49 @@ export default function MyProjectsPage() {
                   </span>
                 </div>
               </div>
+
+              <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setDiscussionProject(proj)}
+                  className="flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 px-3 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 hover:border-blue-500 hover:text-blue-600 transition-colors shadow-2xs"
+                >
+                  <MessageSquare className="h-3.5 w-3.5 text-blue-500" />
+                  <span>Team Discussion</span>
+                </button>
+              </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Team Discussion Dialog */}
+      {discussionProject && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4">
+          <div className="w-full max-w-2xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-4 py-3 bg-slate-50 dark:bg-slate-900/80">
+              <div className="flex items-center gap-2">
+                <FolderKanban className="h-4 w-4 text-amber-500" />
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                  {discussionProject.name} — Team Discussion
+                </span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDiscussionProject(null)}
+                className="rounded p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="p-4">
+              <RecordDiscussionWidget
+                recordType="OPERATION"
+                recordId={discussionProject.id}
+                recordTitle={discussionProject.name}
+              />
+            </div>
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { NextRequest } from "next/server";
 import { cookies } from "next/headers";
-import { getCurrentUser, SESSION_COOKIE_NAME } from "@/lib/auth";
+import { getCurrentUser, SESSION_COOKIE_NAME, invalidateUserSessionCache } from "@/lib/auth";
 import { AuditService } from "@/services/audit.service";
 import { successResponse } from "@/lib/api-response";
 
@@ -8,6 +8,7 @@ export async function POST(req: NextRequest) {
   const user = await getCurrentUser();
 
   if (user) {
+    invalidateUserSessionCache(user.id);
     await AuditService.logMutation({
       actorId: user.id,
       action: "AUTH_LOGOUT",

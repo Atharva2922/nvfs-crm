@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 import { AuditService } from "./audit.service";
+import { EventBusService } from "./event-bus.service";
 
 export interface RecordPaymentInput {
   invoiceId: string;
@@ -148,6 +149,31 @@ export class PaymentService {
         newBalance,
       },
     });
+
+    // Notify client owner of payment receipt
+    if (invoice.client && invoice.client.ownerId) {
+      try {
+        const ownerEmp = await db.employee.findUnique({
+          where: { id: invoice.client.ownerId },
+          select: { userId: true },
+        });
+        if (ownerEmp?.userId) {
+          await EventBusService.publish({
+            type: "PAYMENT_RECEIVED",
+            organizationId: orgId,
+            actorId: user.id,
+            targetUserIds: [ownerEmp.userId],
+            title: `Payment Received: ${invoice.client.name}`,
+            message: `Received ₹${data.amount.toLocaleString()} for Invoice ${invoice.invoiceNumber} (${invoice.client.name}). Balance: ₹${newBalance.toLocaleString()}`,
+            actionUrl: `/app/finance/invoices/${invoice.id}`,
+            metadata: { paymentId: result.payment.id, invoiceId: invoice.id, clientId: invoice.clientId, amount: data.amount },
+            priority: "NORMAL",
+          });
+        }
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish PAYMENT_RECEIVED:", notifErr);
+      }
+    }
 
     return result;
   }

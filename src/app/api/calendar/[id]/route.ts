@@ -47,6 +47,36 @@ export async function DELETE(
       return errorResponse("Forbidden: Only event organizer can delete this event", "FORBIDDEN", 403);
     }
 
+    // Notify attendees of cancellation
+    if (event.attendees) {
+      try {
+        const attendeeIds: string[] = JSON.parse(event.attendees);
+        if (Array.isArray(attendeeIds) && attendeeIds.length > 0) {
+          const attendeeUsers = await db.employee.findMany({
+            where: { id: { in: attendeeIds }, userId: { not: null } },
+            select: { userId: true },
+          });
+          const userIds = attendeeUsers.map((a) => a.userId!).filter((uid) => uid !== user.id);
+          if (userIds.length > 0) {
+            const { EventBusService } = await import("@/services/event-bus.service");
+            await EventBusService.publish({
+              type: "MEETING_CANCELLED",
+              organizationId: event.organizationId,
+              actorId: user.id,
+              targetUserIds: userIds,
+              title: `Meeting Cancelled: ${event.title}`,
+              message: `The scheduled meeting "${event.title}" was cancelled by ${user.employee.firstName} ${user.employee.lastName}.`,
+              actionUrl: "/app/calendar",
+              metadata: { eventId: event.id, title: event.title },
+              priority: "NORMAL",
+            });
+          }
+        }
+      } catch (notifErr) {
+        console.error("[Notification Warning]: Failed to publish MEETING_CANCELLED:", notifErr);
+      }
+    }
+
     await db.calendarEvent.delete({ where: { id } });
     return successResponse({ deleted: true, id });
   } catch (error: any) {

@@ -19,7 +19,7 @@ export class NotificationService {
       where.isRead = false;
     }
     if (type) {
-      where.type = type;
+      where.type = type.includes(",") ? { in: type.split(",").map((t) => t.trim()) } : type;
     }
 
     const [notifications, total, unreadCount] = await Promise.all([

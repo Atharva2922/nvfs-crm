@@ -48,12 +48,14 @@ interface EmployeeItem {
   user?: { id: string; role: { code: string; name: string } } | null;
 }
 
+import { useAuth } from "@/components/providers/auth-provider";
+
 export default function EmployeeDirectoryPage() {
   const [employees, setEmployees] = useState<EmployeeItem[]>([]);
   const [departments, setDepartments] = useState<{ id: string; name: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const { user: currentUser } = useAuth();
 
   // Filter & Search states
   const [search, setSearch] = useState("");
@@ -63,17 +65,6 @@ export default function EmployeeDirectoryPage() {
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
 
-  // Fetch current logged in user profile
-  useEffect(() => {
-    fetch("/api/auth/me")
-      .then((res) => res.json())
-      .then((json) => {
-        if (json.success && json.data) {
-          setCurrentUser(json.data);
-        }
-      })
-      .catch(() => {});
-  }, []);
 
   // New Employee Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);

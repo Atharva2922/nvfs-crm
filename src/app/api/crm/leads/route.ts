@@ -25,13 +25,30 @@ export async function GET(req: NextRequest) {
     const { searchParams } = new URL(req.url);
     const filters = {
       status: searchParams.get("status") || undefined,
+      source: searchParams.get("source") || undefined,
       ownerId: searchParams.get("ownerId") || undefined,
       search: searchParams.get("search") || undefined,
+      datePreset: searchParams.get("datePreset") || undefined,
+      startDate: searchParams.get("startDate") || undefined,
+      endDate: searchParams.get("endDate") || undefined,
       scope: (searchParams.get("scope") as "my" | "all") || "all",
+      page: searchParams.has("page") ? parseInt(searchParams.get("page")!, 10) : undefined,
+      limit: searchParams.has("limit") ? parseInt(searchParams.get("limit")!, 10) : undefined,
+      sortBy: searchParams.get("sortBy") || undefined,
+      sortOrder: (searchParams.get("sortOrder") as "asc" | "desc") || undefined,
     };
 
-    const leads = await LeadService.getLeads(user, filters);
-    return successResponse({ leads });
+    const result = await LeadService.getLeads(user, filters);
+    return successResponse(
+      { leads: result.leads },
+      200,
+      {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      } as any
+    );
   } catch (error: any) {
     console.error("[Leads GET Error]:", error);
     return errorResponse(error.message || "Failed to retrieve leads", "INTERNAL_ERROR", 500);

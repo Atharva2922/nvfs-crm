@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Layers, ArrowRight, CheckCircle2 } from "lucide-react";
 
-interface ProjectItem {
+export interface ProjectItem {
   id: string;
   operationCode: string;
   name: string;
@@ -14,11 +14,16 @@ interface ProjectItem {
   departmentName?: string;
 }
 
-export function ProjectProgressWidget() {
-  const [projects, setProjects] = useState<ProjectItem[]>([]);
-  const [loading, setLoading] = useState(true);
+interface ProjectProgressWidgetProps {
+  initialProjects?: ProjectItem[];
+}
+
+export function ProjectProgressWidget({ initialProjects }: ProjectProgressWidgetProps = {}) {
+  const [projects, setProjects] = useState<ProjectItem[]>(initialProjects || []);
+  const [loading, setLoading] = useState(!initialProjects);
 
   useEffect(() => {
+    if (initialProjects) return;
     async function fetchProjects() {
       try {
         setLoading(true);
@@ -36,7 +41,7 @@ export function ProjectProgressWidget() {
       }
     }
     fetchProjects();
-  }, []);
+  }, [initialProjects]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

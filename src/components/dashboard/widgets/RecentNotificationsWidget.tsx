@@ -4,7 +4,7 @@ import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Bell, ArrowRight, Check } from "lucide-react";
 
-interface NotificationItem {
+export interface NotificationItem {
   id: string;
   title: string;
   message: string;
@@ -13,11 +13,16 @@ interface NotificationItem {
   createdAt: string;
 }
 
-export function RecentNotificationsWidget() {
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [loading, setLoading] = useState(true);
+interface RecentNotificationsWidgetProps {
+  initialNotifications?: NotificationItem[];
+}
+
+export function RecentNotificationsWidget({ initialNotifications }: RecentNotificationsWidgetProps = {}) {
+  const [notifications, setNotifications] = useState<NotificationItem[]>(initialNotifications || []);
+  const [loading, setLoading] = useState(!initialNotifications);
 
   useEffect(() => {
+    if (initialNotifications) return;
     async function fetchNotifications() {
       try {
         setLoading(true);
@@ -40,7 +45,7 @@ export function RecentNotificationsWidget() {
       }
     }
     fetchNotifications();
-  }, []);
+  }, [initialNotifications]);
 
   return (
     <div className="rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/90 p-5 shadow-xs transition-all hover:shadow-md">

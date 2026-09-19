@@ -27,11 +27,34 @@ export async function GET(req: NextRequest) {
       clientId: searchParams.get("clientId") || undefined,
       ownerId: searchParams.get("ownerId") || undefined,
       search: searchParams.get("search") || undefined,
+      minValue: searchParams.has("minValue") ? parseFloat(searchParams.get("minValue")!) : undefined,
+      maxValue: searchParams.has("maxValue") ? parseFloat(searchParams.get("maxValue")!) : undefined,
+      minProbability: searchParams.has("minProbability") ? parseInt(searchParams.get("minProbability")!, 10) : undefined,
+      maxProbability: searchParams.has("maxProbability") ? parseInt(searchParams.get("maxProbability")!, 10) : undefined,
+      closeDatePreset: searchParams.get("closeDatePreset") || undefined,
+      closeDateFrom: searchParams.get("closeDateFrom") || undefined,
+      closeDateTo: searchParams.get("closeDateTo") || undefined,
+      datePreset: searchParams.get("datePreset") || undefined,
+      startDate: searchParams.get("startDate") || undefined,
+      endDate: searchParams.get("endDate") || undefined,
       scope: (searchParams.get("scope") as "my" | "all") || "all",
+      page: searchParams.has("page") ? parseInt(searchParams.get("page")!, 10) : undefined,
+      limit: searchParams.has("limit") ? parseInt(searchParams.get("limit")!, 10) : undefined,
+      sortBy: searchParams.get("sortBy") || undefined,
+      sortOrder: (searchParams.get("sortOrder") as "asc" | "desc") || undefined,
     };
 
-    const opportunities = await OpportunityService.getOpportunities(user, filters);
-    return successResponse({ opportunities });
+    const result = await OpportunityService.getOpportunities(user, filters);
+    return successResponse(
+      { opportunities: result.opportunities },
+      200,
+      {
+        total: result.total,
+        page: result.page,
+        limit: result.limit,
+        totalPages: result.totalPages,
+      } as any
+    );
   } catch (error: any) {
     console.error("[Opportunities GET Error]:", error);
     return errorResponse(error.message || "Failed to retrieve opportunities", "INTERNAL_ERROR", 500);
