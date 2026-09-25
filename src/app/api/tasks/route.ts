@@ -20,7 +20,9 @@ const createTaskSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user || (!user.employee && user.roleCode !== "SUPER_ADMIN")) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
 
     const { searchParams } = new URL(req.url);
     const filters = {

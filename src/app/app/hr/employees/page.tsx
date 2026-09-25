@@ -21,17 +21,39 @@ import {
   UserPlus,
   Network,
   Filter,
-  ArrowUpDown,
   Building,
   Briefcase,
   ExternalLink,
   Lock,
+  Crown,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { HrNav } from "@/modules/hr/components/hr-nav";
 
+// Roles classified as Leadership/Executive
+const LEADERSHIP_ROLE_CODES = new Set([
+  "SUPER_ADMIN", "ADMIN", "CHAIRPERSON", "CEO", "COO", "CFO", "CTO", "CMO", "HR",
+]);
+
+const LEADERSHIP_ROLE_COLORS: Record<string, string> = {
+  CEO: "bg-amber-500/10 text-amber-400 border-amber-500/20",
+  COO: "bg-orange-500/10 text-orange-400 border-orange-500/20",
+  CFO: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20",
+  CTO: "bg-blue-500/10 text-blue-400 border-blue-500/20",
+  CMO: "bg-pink-500/10 text-pink-400 border-pink-500/20",
+  HR: "bg-violet-500/10 text-violet-400 border-violet-500/20",
+  CHAIRPERSON: "bg-rose-500/10 text-rose-400 border-rose-500/20",
+  ADMIN: "bg-slate-500/10 text-slate-300 border-slate-500/20",
+  SUPER_ADMIN: "bg-red-500/10 text-red-400 border-red-500/20",
+};
+
+function getRoleColor(code: string) {
+  return LEADERSHIP_ROLE_COLORS[code] ?? "bg-slate-500/10 text-slate-400 border-slate-500/20";
+}
+
 interface EmployeeItem {
   id: string;
+  organizationId?: string;
   employeeNumber: string;
   firstName: string;
   lastName: string;
@@ -46,6 +68,7 @@ interface EmployeeItem {
   department?: { id: string; name: string; code: string } | null;
   manager?: { id: string; firstName: string; lastName: string; designation: string } | null;
   user?: { id: string; role: { code: string; name: string } } | null;
+  organization?: { id: string; name: string; code: string } | null;
 }
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -64,7 +87,6 @@ export default function EmployeeDirectoryPage() {
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const [totalRecords, setTotalRecords] = useState(0);
-
 
   // New Employee Drawer state
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
@@ -93,13 +115,21 @@ export default function EmployeeDirectoryPage() {
       setError(null);
       const params = new URLSearchParams({
         page: String(page),
-        limit: "10",
+        limit: "200", // fetch all so we can split client-side
         search,
         departmentId: selectedDept,
         status: selectedStatus,
       });
 
-      const res = await fetch(`/api/employees?${params.toString()}`);
+      if (currentUser?.activeCompany?.id) {
+        params.set("organizationId", currentUser.activeCompany.id);
+      }
+
+      const res = await fetch(`/api/employees?${params.toString()}`, {
+        headers: currentUser?.activeCompany?.id
+          ? { "x-company-id": currentUser.activeCompany.id }
+          : {},
+      });
       const json = await res.json();
 
       if (!res.ok || !json.success) {
@@ -114,17 +144,40 @@ export default function EmployeeDirectoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, selectedDept, selectedStatus]);
+  }, [page, search, selectedDept, selectedStatus, currentUser?.activeCompany?.id]);
+
+  // Isolate strictly by active company
+  const currentOrgId = currentUser?.activeCompany?.id;
+  const scopedEmployees = currentOrgId
+    ? employees.filter((e) => !e.organizationId || e.organizationId === currentOrgId)
+    : employees;
+
+  // Split into leadership and staff
+  const leadershipList = scopedEmployees.filter(
+    (e) => LEADERSHIP_ROLE_CODES.has(e.user?.role?.code || "")
+  );
+  const staffList = scopedEmployees.filter(
+    (e) => !LEADERSHIP_ROLE_CODES.has(e.user?.role?.code || "")
+  );
+  const displayedStaff = staffList.slice((page - 1) * 10, page * 10);
+  const staffTotalPages = Math.max(1, Math.ceil(staffList.length / 10));
 
   useEffect(() => {
     fetchEmployees();
   }, [fetchEmployees]);
 
-  // Load all department options from API
+  // Load department options scoped strictly to active company
   useEffect(() => {
     async function loadDepartments() {
       try {
-        const res = await fetch("/api/hr/departments");
+        const companyParam = currentUser?.activeCompany?.id
+          ? `?organizationId=${currentUser.activeCompany.id}`
+          : "";
+        const res = await fetch(`/api/hr/departments${companyParam}`, {
+          headers: currentUser?.activeCompany?.id
+            ? { "x-company-id": currentUser.activeCompany.id }
+            : {},
+        });
         if (res.ok) {
           const json = await res.json();
           if (json.success && Array.isArray(json.data)) {
@@ -136,7 +189,7 @@ export default function EmployeeDirectoryPage() {
       }
     }
     loadDepartments();
-  }, []);
+  }, [currentUser?.activeCompany?.id]);
 
   const handleCreateSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -146,7 +199,10 @@ export default function EmployeeDirectoryPage() {
     try {
       const res = await fetch("/api/employees", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(currentUser?.activeCompany?.id ? { "x-company-id": currentUser.activeCompany.id } : {}),
+        },
         body: JSON.stringify(formData),
       });
 
@@ -248,70 +304,118 @@ export default function EmployeeDirectoryPage() {
 
       <HrNav />
 
+      {/* ── Leadership & Executive Panel ── */}
+      {leadershipList.length > 0 && (
+        <div className="rounded-xl border border-amber-500/20 bg-amber-950/10 overflow-hidden">
+          <div className="flex items-center gap-2.5 px-4 py-3 border-b border-amber-500/20 bg-amber-950/20">
+            <Crown className="h-4 w-4 text-amber-400" />
+            <h2 className="text-sm font-bold text-amber-300">Leadership &amp; Executive Directory</h2>
+            <span className="ml-auto rounded-full bg-amber-500/20 px-2 py-0.5 text-[10px] font-semibold text-amber-400">
+              {leadershipList.length} members
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 p-4">
+            {leadershipList.map((emp) => {
+              const roleCode = emp.user?.role?.code || "";
+              const roleName = emp.user?.role?.name || emp.designation;
+              const colorClass = getRoleColor(roleCode);
+              return (
+                <Link
+                  key={emp.id}
+                  href={`/app/hr/employees/${emp.id}`}
+                  className="group flex items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-900/60 p-3 hover:border-amber-500/40 hover:bg-amber-950/20 transition-all"
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-700/10 border border-amber-500/20 text-sm font-bold text-amber-300">
+                    {emp.firstName[0]}{emp.lastName[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-xs font-semibold text-slate-100 group-hover:text-amber-300 transition-colors truncate">
+                      {emp.firstName} {emp.lastName}
+                    </p>
+                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider mt-0.5 ${colorClass}`}>
+                      {roleCode || "EXEC"}
+                    </span>
+                    <p className="text-[10px] text-slate-500 truncate mt-0.5">{emp.department?.name || "Executive Office"}</p>
+                  </div>
+                  <ExternalLink className="h-3 w-3 text-slate-600 group-hover:text-amber-400 shrink-0" />
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Filter and Search Bar */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 rounded-lg border border-slate-800 bg-slate-900/40 p-3">
-        <div className="w-full md:w-80">
-          <Search
-            value={search}
-            onChange={(val) => {
-              setSearch(val);
-              setPage(1);
-            }}
-            placeholder="Search by name, email, employee ID..."
-          />
+        <div className="flex items-center gap-2">
+          <Users className="h-3.5 w-3.5 text-slate-400" />
+          <span className="text-xs font-semibold text-slate-300">Staff Employees</span>
+          <span className="rounded-full bg-slate-800 px-2 py-0.5 text-[10px] font-mono text-slate-400">{staffList.length}</span>
         </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          <div className="flex items-center gap-1 text-xs text-slate-400">
-            <Filter className="h-3 w-3" />
-            <span>Filters:</span>
-          </div>
-
-          <div className="w-40">
-            <Select
-              options={[
-                { label: "All Departments", value: "ALL" },
-                ...departments.map((d) => ({ label: d.name, value: d.id })),
-              ]}
-              value={selectedDept}
-              onChange={(e) => {
-                setSelectedDept(e.target.value);
+        <div className="flex flex-col md:flex-row md:items-center gap-3 flex-1 md:justify-end">
+          <div className="w-full md:w-80">
+            <Search
+              value={search}
+              onChange={(val) => {
+                setSearch(val);
                 setPage(1);
               }}
+              placeholder="Search by name, email, employee ID..."
             />
           </div>
 
-          <div className="w-32">
-            <Select
-              options={[
-                { label: "All Statuses", value: "ALL" },
-                { label: "Active", value: "ACTIVE" },
-                { label: "Probation", value: "PROBATION" },
-                { label: "On Leave", value: "ON_LEAVE" },
-                { label: "Terminated", value: "TERMINATED" },
-              ]}
-              value={selectedStatus}
-              onChange={(e) => {
-                setSelectedStatus(e.target.value);
-                setPage(1);
-              }}
-            />
+          <div className="flex flex-wrap items-center gap-2.5">
+            <div className="flex items-center gap-1 text-xs text-slate-400">
+              <Filter className="h-3 w-3" />
+              <span>Filters:</span>
+            </div>
+
+            <div className="w-40">
+              <Select
+                options={[
+                  { label: "All Departments", value: "ALL" },
+                  ...departments.map((d) => ({ label: d.name, value: d.id })),
+                ]}
+                value={selectedDept}
+                onChange={(e) => {
+                  setSelectedDept(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
+
+            <div className="w-32">
+              <Select
+                options={[
+                  { label: "All Statuses", value: "ALL" },
+                  { label: "Active", value: "ACTIVE" },
+                  { label: "Probation", value: "PROBATION" },
+                  { label: "On Leave", value: "ON_LEAVE" },
+                  { label: "Terminated", value: "TERMINATED" },
+                ]}
+                value={selectedStatus}
+                onChange={(e) => {
+                  setSelectedStatus(e.target.value);
+                  setPage(1);
+                }}
+              />
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Employee Records Table */}
+      {/* Staff Employee Records Table */}
       <Card>
         <CardContent className="p-0">
           {loading ? (
             <LoadingState message="Loading corporate directory..." />
           ) : error ? (
             <ErrorState message={error} retry={fetchEmployees} />
-          ) : employees.length === 0 ? (
+          ) : staffList.length === 0 ? (
             <EmptyState
               icon={Users}
-              title="No employees found"
-              description="No personnel records matched your search query or filter selection."
+              title="No staff employees found"
+              description="No staff personnel records matched your search or filter."
               action={{
                 label: "Reset Filters",
                 onClick: () => {
@@ -338,7 +442,7 @@ export default function EmployeeDirectoryPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {employees.map((emp) => (
+                  {displayedStaff.map((emp) => (
                     <TableRow key={emp.id} className="cursor-pointer group">
                       <TableCell className="font-mono text-xs font-semibold text-blue-400">
                         {emp.employeeNumber}
@@ -424,8 +528,8 @@ export default function EmployeeDirectoryPage() {
 
               <Pagination
                 currentPage={page}
-                totalPages={totalPages}
-                totalRecords={totalRecords}
+                totalPages={staffTotalPages}
+                totalRecords={staffList.length}
                 pageSize={10}
                 onPageChange={(p) => setPage(p)}
               />
@@ -562,7 +666,10 @@ export default function EmployeeDirectoryPage() {
                     { label: "Staff Employee (EMPLOYEE)", value: "EMPLOYEE" },
                     { label: "Line Manager (MANAGER)", value: "MANAGER" },
                     { label: "Department Head (DEPARTMENT_HEAD)", value: "DEPARTMENT_HEAD" },
+                    { label: "Chief Human Resources Officer (HR)", value: "HR" },
                     { label: "Platform Administrator (ADMIN)", value: "ADMIN" },
+                    { label: "Chief Operating Officer (COO)", value: "COO" },
+                    { label: "Chief Marketing Officer (CMO)", value: "CMO" },
                     { label: "Chief Technology Officer (CTO)", value: "CTO" },
                     { label: "Chief Financial Officer (CFO)", value: "CFO" },
                     { label: "Chief Executive Officer (CEO)", value: "CEO" },
@@ -579,7 +686,7 @@ export default function EmployeeDirectoryPage() {
             label="Direct Line Manager"
             options={[
               { label: "None (Reports to Board / C-Suite)", value: "" },
-              ...employees.map((e) => ({
+              ...scopedEmployees.map((e) => ({
                 label: `${e.firstName} ${e.lastName} (${e.designation})`,
                 value: e.id,
               })),

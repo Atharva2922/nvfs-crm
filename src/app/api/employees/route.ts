@@ -33,23 +33,33 @@ export async function GET(req: NextRequest) {
     }
 
     const { searchParams } = new URL(req.url);
+    const targetOrgId =
+      searchParams.get("organizationId") ||
+      req.headers.get("x-company-id") ||
+      user.activeCompany?.id ||
+      user.employee?.organizationId;
+
     const search = searchParams.get("search") || "";
     const departmentId = searchParams.get("departmentId") || undefined;
     const status = searchParams.get("status") || undefined;
     const designation = searchParams.get("designation") || undefined;
     const page = Math.max(Number(searchParams.get("page") || 1), 1);
-    const limit = Math.min(Number(searchParams.get("limit") || 10), 50);
+    const limit = Math.min(Number(searchParams.get("limit") || 50), 200);
     const skip = (page - 1) * limit;
 
     const where: any = {};
 
+    if (targetOrgId) {
+      where.organizationId = targetOrgId;
+    }
+
     if (search) {
       where.OR = [
-        { firstName: { contains: search } },
-        { lastName: { contains: search } },
-        { email: { contains: search } },
-        { employeeNumber: { contains: search } },
-        { designation: { contains: search } },
+        { firstName: { contains: search, mode: "insensitive" } },
+        { lastName: { contains: search, mode: "insensitive" } },
+        { email: { contains: search, mode: "insensitive" } },
+        { employeeNumber: { contains: search, mode: "insensitive" } },
+        { designation: { contains: search, mode: "insensitive" } },
       ];
     }
 
@@ -65,15 +75,28 @@ export async function GET(req: NextRequest) {
       where.designation = designation;
     }
 
-    const [totalCount, employees] = await Promise.all([
+    const [totalCount, rawEmployees] = await Promise.all([
       db.employee.count({ where }),
       db.employee.findMany({
         where,
         skip,
         take: limit,
-        orderBy: { employeeNumber: "asc" },
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
         include: {
           department: true,
+          assignedTasks: {
+            where: { status: { in: ["TODO", "IN_PROGRESS"] } },
+            select: { id: true, title: true, status: true, priority: true },
+          },
+          operationAssignments: {
+            include: {
+              operation: { select: { id: true, status: true } },
+            },
+          },
+          onDutyAssignments: {
+            where: { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },
+            select: { id: true },
+          },
           manager: {
             select: {
               id: true,
@@ -98,7 +121,44 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    return successResponse(employees, 200, {
+    // Calculate live availability (free vs busy)
+    const employees = rawEmployees.map((emp) => {
+      const activeTasksCount = emp.assignedTasks.length;
+      const activeOpsCount = emp.operationAssignments.filter((oa) =>
+        ["ACTIVE", "SCHEDULED", "IN_PROGRESS"].includes(oa.operation?.status)
+      ).length;
+      const activeOnDutyCount = emp.onDutyAssignments.length;
+
+      const isFree =
+        emp.employmentStatus === "ACTIVE" &&
+        activeTasksCount === 0 &&
+        activeOpsCount === 0 &&
+        activeOnDutyCount === 0;
+
+      let busyReason: string | null = null;
+      if (emp.employmentStatus !== "ACTIVE") {
+        busyReason = `Status: ${emp.employmentStatus}`;
+      } else if (activeTasksCount > 0) {
+        busyReason = `${activeTasksCount} active task(s)`;
+      } else if (activeOpsCount > 0) {
+        busyReason = `${activeOpsCount} active operation(s)`;
+      } else if (activeOnDutyCount > 0) {
+        busyReason = "On-duty assignment";
+      }
+
+      return {
+        ...emp,
+        isFree,
+        busyReason,
+        activeTasksCount,
+        activeOpsCount,
+      };
+    });
+
+    const responsePayload: any = employees;
+    responsePayload.employees = employees; // Dual compatibility for both json.data and json.data.employees
+
+    return successResponse(responsePayload, 200, {
       totalCount,
       totalPages: Math.ceil(totalCount / limit),
       currentPage: page,
@@ -116,9 +176,10 @@ export async function POST(req: NextRequest) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 
-    // RBAC Check: requires "employees.employee.create"
-    const allowed = await RbacService.hasPermission(user.id, "employees.employee.create");
-    if (!allowed) {
+    // RBAC Check: requires "employees.employee.create" or executive persona (SUPER_ADMIN, ADMIN, CEO, HR)
+    const isExecutiveCreator = ["SUPER_ADMIN", "ADMIN", "CEO", "HR"].includes(user.roleCode);
+    const hasPermission = await RbacService.hasPermission(user.id, "employees.employee.create");
+    if (!hasPermission && !isExecutiveCreator) {
       return errorResponse("Forbidden: Missing employees.employee.create permission", "FORBIDDEN", 403);
     }
 
@@ -128,7 +189,17 @@ export async function POST(req: NextRequest) {
       return errorResponse(parse.error.issues[0].message, "VALIDATION_ERROR", 400);
     }
 
-    const org = await db.organization.findFirst();
+    // Resolve the organization from request headers, query params, or active company context
+    const companyId =
+      req.headers.get("x-company-id") ||
+      req.nextUrl.searchParams.get("organizationId") ||
+      user.activeCompany?.id ||
+      user.employee?.organizationId;
+
+    const org = companyId
+      ? await db.organization.findUnique({ where: { id: companyId } })
+      : await db.organization.findFirst();
+
     if (!org) {
       return errorResponse("No organization configured", "INTERNAL_ERROR", 500);
     }
@@ -175,18 +246,74 @@ export async function POST(req: NextRequest) {
       });
 
       createdUserId = createdUser.id;
+
+      // Ensure membership in this specific company
+      await db.userCompanyMembership.upsert({
+        where: {
+          userId_organizationId: {
+            userId: createdUserId,
+            organizationId: org.id,
+          },
+        },
+        create: {
+          userId: createdUserId,
+          organizationId: org.id,
+          roleId: role.id,
+          status: "ACTIVE",
+          isPrimary: true,
+        },
+        update: {
+          status: "ACTIVE",
+          roleId: role.id,
+        },
+      }).catch(() => {});
     }
 
-    // Auto-generate employee number
-    const count = await db.employee.count();
-    const employeeNumber = `NFVS-${String(count + 1).padStart(4, "0")}`;
+    // Validate and scope Department strictly to this organization
+    let validDepartmentId = parse.data.departmentId;
+    const deptInOrg = await db.department.findFirst({
+      where: { id: validDepartmentId, organizationId: org.id },
+    });
+    if (!deptInOrg) {
+      // Find matching department code/name in target company
+      const submittedDept = await db.department.findUnique({ where: { id: parse.data.departmentId } });
+      const matchingDept = submittedDept
+        ? await db.department.findFirst({
+            where: {
+              organizationId: org.id,
+              OR: [{ code: submittedDept.code }, { name: submittedDept.name }],
+            },
+          })
+        : null;
+      const fallbackDept =
+        matchingDept || (await db.department.findFirst({ where: { organizationId: org.id } }));
+      if (fallbackDept) {
+        validDepartmentId = fallbackDept.id;
+      }
+    }
+
+    // Validate and scope Manager strictly to this organization
+    let validManagerId = parse.data.managerId || null;
+    if (validManagerId) {
+      const managerInOrg = await db.employee.findFirst({
+        where: { id: validManagerId, organizationId: org.id },
+      });
+      if (!managerInOrg) {
+        validManagerId = null;
+      }
+    }
+
+    // Auto-generate company-scoped employee number (e.g. EMP-NAREE-EMP-001 or EMP-NFVS-EMP-001)
+    const orgCode = org.code ? org.code.toUpperCase() : "EMP";
+    const count = await db.employee.count({ where: { organizationId: org.id } });
+    const employeeNumber = `EMP-${orgCode}-EMP-${String(count + 1).padStart(3, "0")}`;
 
     const newEmployee = await db.employee.create({
       data: {
         organizationId: org.id,
-        departmentId: parse.data.departmentId,
+        departmentId: validDepartmentId,
         userId: createdUserId,
-        managerId: parse.data.managerId || null,
+        managerId: validManagerId,
         employeeNumber,
         firstName: parse.data.firstName.trim(),
         lastName: parse.data.lastName.trim(),

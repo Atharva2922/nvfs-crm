@@ -10,13 +10,25 @@ export async function GET(req: NextRequest) {
       return errorResponse("Unauthenticated", "UNAUTHORIZED", 401);
     }
 
-    const requests = await db.employeeRequest.findMany({
-      where: {
-        employeeId: user.employee.id,
-        organizationId: user.employee.organizationId,
-      },
-      orderBy: { createdAt: "desc" },
-    });
+    const currentOrgId = user.activeCompany?.id || user.employee.organizationId;
+
+    const [requests, incomingStaffRequestsCount] = await Promise.all([
+      db.employeeRequest.findMany({
+        where: {
+          employeeId: user.employee.id,
+          organizationId: currentOrgId,
+        },
+        orderBy: { createdAt: "desc" },
+        take: 5,
+      }),
+      db.approvalRequest.count({
+        where: {
+          organizationId: currentOrgId,
+          entityType: "CROSS_COMPANY_RESOURCE",
+          status: "PENDING",
+        },
+      }),
+    ]);
 
     let pendingCount = 0;
     let approvedCount = 0;
@@ -29,7 +41,8 @@ export async function GET(req: NextRequest) {
     return successResponse({
       pendingCount,
       approvedCount,
-      recentRequests: requests.slice(0, 5),
+      incomingStaffRequestsCount,
+      recentRequests: requests,
     });
   } catch (error: any) {
     console.error("[Request Summary API Error]:", error);

@@ -1,7 +1,12 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { AuthenticatedUser, SystemRoleCode } from "@/types";
+import {
+  AuthenticatedUser,
+  SystemRoleCode,
+  CompanySummary,
+  UserCompanyMembershipSummary,
+} from "@/types";
 
 interface AuthContextValue {
   user: AuthenticatedUser | null;
@@ -9,11 +14,16 @@ interface AuthContextValue {
   roleLevel: number;
   roleName: string;
   permissions: string[];
-  isManager: boolean;
+  activeCompany: CompanySummary | null;
+  memberships: UserCompanyMembershipSummary[];
+  isMultiCompanyUser: boolean;
+  isSuperAdmin: boolean;
   isExecutive: boolean;
   isDeptHead: boolean;
+  isManager: boolean;
   hasPermission: (permission: string) => boolean;
   refreshUser: () => Promise<void>;
+  switchCompany: (companyId: string) => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -47,23 +57,56 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     }
   }, []);
 
+  const switchCompany = useCallback(
+    async (companyId: string) => {
+      try {
+        const res = await fetch("/api/auth/switch-company", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ companyId }),
+        });
+
+        if (res.ok) {
+          const json = await res.json();
+          if (json.success) {
+            // Hard reload or window refresh to ensure complete state/cache invalidation
+            window.location.reload();
+            return true;
+          }
+        }
+        return false;
+      } catch (err) {
+        console.error("[AuthProvider] Failed to switch company:", err);
+        return false;
+      }
+    },
+    []
+  );
+
   const role = user?.roleCode || "EMPLOYEE";
   const roleLevel = user?.roleLevel || 10;
   const roleName = user?.roleName || "Staff Member";
   const permissions = user?.permissions || [];
+  const activeCompany = user?.activeCompany || null;
+  const memberships = user?.memberships || [];
+
+  const isSuperAdmin = role === "SUPER_ADMIN" || roleLevel >= 100;
+  const isMultiCompanyUser = isSuperAdmin || memberships.length > 1;
 
   const isManager = roleLevel >= 30 || role === "MANAGER";
   const isDeptHead = roleLevel >= 50 || role === "DEPARTMENT_HEAD";
   const isExecutive =
-    roleLevel >= 80 ||
-    ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CFO", "CTO", "CMO", "ADMIN"].includes(role);
+    roleLevel >= 70 ||
+    ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CFO", "CTO", "CMO", "COO", "HR", "ADMIN"].includes(
+      role
+    );
 
   const hasPermission = useCallback(
     (perm: string) => {
-      if (role === "SUPER_ADMIN" || roleLevel >= 90) return true;
+      if (isSuperAdmin || roleLevel >= 90) return true;
       return permissions.includes(perm);
     },
-    [role, roleLevel, permissions]
+    [isSuperAdmin, roleLevel, permissions]
   );
 
   return (
@@ -74,11 +117,16 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
         roleLevel,
         roleName,
         permissions,
-        isManager,
+        activeCompany,
+        memberships,
+        isMultiCompanyUser,
+        isSuperAdmin,
         isExecutive,
         isDeptHead,
+        isManager,
         hasPermission,
         refreshUser,
+        switchCompany,
       }}
     >
       {children}

@@ -65,7 +65,10 @@ export function NotificationBell() {
 
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000); // 30s poll
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchUnreadCount();
+    }, 60000); // 60s poll
     return () => clearInterval(interval);
   }, []);
 

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -30,125 +30,284 @@ import {
   BookOpen,
   Sparkles,
   Zap,
+  Globe2,
+  Server,
+  Activity,
+  UserPlus,
+  ShieldCheck,
+  GitBranch,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 
+interface NavItem {
+  title: string;
+  href: string;
+  icon: React.ElementType;
+}
+
 interface NavGroup {
   groupName?: string;
-  items: Array<{
-    title: string;
-    href: string;
-    icon: React.ElementType;
-    subItems?: Array<{ title: string; href: string }>;
-  }>;
+  items: NavItem[];
 }
 
 export function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
-  const { user: currentUser, role, roleLevel, permissions, isManager } = useAuth();
+  const {
+    user: currentUser,
+    role,
+    roleLevel,
+    permissions,
+    activeCompany,
+    isSuperAdmin,
+    isExecutive,
+    isDeptHead,
+    isManager,
+  } = useAuth();
 
+  // Determine dynamic company branding
+  const companyName = activeCompany?.name || "Apex Global Technologies";
+  const companyCode = activeCompany?.code || "APEX-TECH";
+  const primaryColor = activeCompany?.primaryColor || "#2563eb";
+  const companyInitials = companyName
+    .split(" ")
+    .slice(0, 2)
+    .map((w) => w[0])
+    .join("")
+    .toUpperCase();
 
-  // Build navigation items based on User Role & Permissions
-  const navGroups: NavGroup[] = [
-    {
-      items: [{ title: "Overview", href: "/app/overview", icon: LayoutDashboard }],
-    },
-    {
-      groupName: "MY WORK",
-      items: [
-        { title: "AI Intelligence", href: "/app/ai", icon: Sparkles },
-        { title: "Communications", href: "/app/communications", icon: MessageSquare },
-        { title: "My Tasks", href: "/app/tasks", icon: CheckSquare },
-        { title: "My Projects", href: "/app/projects", icon: FolderKanban },
-        { title: "Calendar", href: "/app/calendar", icon: Calendar },
-      ],
-    },
-    {
-      groupName: "HR & PROFILE",
-      items: [
-        { title: "Attendance", href: "/app/hr/attendance", icon: Clock },
-        { title: "My Leave", href: "/app/hr/leaves", icon: Calendar },
-        { title: "My Salary", href: "/app/payroll/my-payslips", icon: FileCheck },
-        { title: "My Documents", href: "/app/documents", icon: FileText },
-        ...(isManager
-          ? [{ title: "Team Attendance", href: "/app/hr/attendance?scope=TEAM", icon: UserCheck }]
-          : []),
-      ],
-    },
-    {
-      groupName: "SELF SERVICE & SERVICES",
-      items: [
-        { title: "Expenses", href: "/app/expenses", icon: IndianRupee },
-        { title: "On-Duty Field", href: "/app/on-duty", icon: Briefcase },
-        { title: "Request Center", href: "/app/requests", icon: FileText },
-        { title: "Company People", href: "/app/people", icon: Users },
-        { title: "Policies", href: "/app/policies", icon: BookOpen },
-        { title: "Notifications", href: "/app/notifications", icon: Bell },
-      ],
-    },
-  ];
+  // Build role-specific navigation groups
+  // Build role-specific navigation groups strictly scoped by designation
+  const navGroups: NavGroup[] = [];
 
-  // Optional Administrative / Executive Modules
-  if (roleLevel >= 50 || ["SUPER_ADMIN", "ADMIN", "CEO", "CFO", "CTO", "CMO", "CHAIRPERSON"].includes(role)) {
-    const executiveItems = [
-      ...(role === "CEO" || role === "SUPER_ADMIN" || role === "CHAIRPERSON" || roleLevel >= 90 || permissions.includes("dashboard.ceo.view")
-        ? [{ title: "CEO Dashboard", href: "/app/dashboard/ceo", icon: Sparkles }]
-        : []),
-      ...(role === "CHAIRPERSON" || role === "CEO" || role === "SUPER_ADMIN" || permissions.includes("dashboard.chairperson.view")
-        ? [{ title: "Chairperson Oversight", href: "/app/dashboard/chairperson", icon: Building }]
-        : []),
-      ...(role === "CTO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || permissions.includes("dashboard.cto.view")
-        ? [{ title: "CTO Tech Center", href: "/app/dashboard/cto", icon: Layers }]
-        : []),
-      ...(role === "CMO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || permissions.includes("dashboard.cmo.view")
-        ? [{ title: "CMO Growth Center", href: "/app/dashboard/cmo", icon: BarChart3 }]
-        : []),
-      ...(role === "CFO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || permissions.includes("dashboard.cfo.view")
-        ? [{ title: "CFO Treasury", href: "/app/dashboard/cfo", icon: IndianRupee }]
-        : []),
-    ];
+  const deptCode = (currentUser?.employee?.departmentCode || "").toUpperCase();
+  const deptName = (currentUser?.employee?.departmentName || "").toLowerCase();
+  const designation = (currentUser?.employee?.designation || "").toLowerCase();
+  const userEmail = (currentUser?.email || "").toLowerCase();
 
-    if (executiveItems.length > 0) {
-      navGroups.push({
-        groupName: "EXECUTIVE SUITE",
-        items: executiveItems,
-      });
-    }
+  const isOpsStaff =
+    deptCode === "OPS" ||
+    deptName.includes("operation") ||
+    designation.includes("operation") ||
+    userEmail.startsWith("operations");
 
+  const isFinStaff =
+    deptCode === "FIN" ||
+    deptName.includes("finance") ||
+    designation.includes("finance") ||
+    userEmail.startsWith("finance");
+
+  const isMktStaff =
+    deptCode === "MKT" ||
+    deptName.includes("market") ||
+    designation.includes("market") ||
+    userEmail.startsWith("marketing");
+
+  const isIntlStaff =
+    deptCode === "INTL" ||
+    deptName.includes("international") ||
+    designation.includes("international") ||
+    userEmail.startsWith("international");
+
+  // ========================================================
+  // 1. SUPER ADMIN (Platform-Level Cockpit & Read-Only Governance)
+  // ========================================================
+  if (isSuperAdmin) {
     navGroups.push({
-      groupName: "ENTERPRISE MODULES",
+      groupName: "PLATFORM GOVERNANCE",
       items: [
-        ...(role === "CMO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || roleLevel >= 80 || permissions.some((p) => p.startsWith("crm"))
-          ? [{ title: "CRM", href: "/app/crm", icon: Briefcase }]
-          : []),
-        ...(role === "CTO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || roleLevel >= 50 || permissions.some((p) => p.startsWith("operations"))
-          ? [{ title: "Operations Hub", href: "/app/operations", icon: Layers }]
-          : []),
-        ...(role === "CFO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || roleLevel >= 80 || permissions.some((p) => p.startsWith("finance"))
-          ? [{ title: "Finance Hub", href: "/app/finance", icon: IndianRupee }]
-          : []),
-        ...(role === "CFO" || role === "ADMIN" || role === "SUPER_ADMIN" || role === "CEO" || roleLevel >= 80 || permissions.some((p) => p.startsWith("payroll"))
-          ? [{ title: "Payroll Management", href: "/app/payroll", icon: FileCheck }]
-          : []),
-        ...(role === "CFO" || role === "CTO" || role === "CEO" || role === "CHAIRPERSON" || role === "SUPER_ADMIN" || roleLevel >= 50 || permissions.some((p) => p.startsWith("inventory"))
-          ? [{ title: "Products & Inventory", href: "/app/inventory", icon: Package }]
-          : []),
-        ...(role === "ADMIN" || role === "SUPER_ADMIN" || role === "CEO" || role === "CHAIRPERSON" || roleLevel >= 80 || permissions.some((p) => p.startsWith("legal"))
-          ? [{ title: "Legal & Compliance", href: "/app/legal", icon: Scale }]
-          : []),
-        ...(role === "ADMIN" || role === "SUPER_ADMIN" || role === "CEO" || role === "CHAIRPERSON" || role === "DEPARTMENT_HEAD" || roleLevel >= 50 || permissions.some((p) => p.startsWith("hr") || p.startsWith("employees"))
-          ? [{ title: "HR & Organization", href: "/app/hr", icon: Building }]
-          : []),
-        ...(roleLevel >= 50 ? [{ title: "Workflows & Automation", href: "/app/settings/workflows", icon: Zap }] : []),
-        ...(roleLevel >= 50 ? [{ title: "Reports & Cockpit", href: "/app/reports", icon: BarChart3 }] : []),
-        ...(roleLevel >= 80 ? [{ title: "Audit Trail", href: "/app/audit", icon: ShieldAlert }] : []),
+        { title: "Platform Overview", href: "/app/super-admin", icon: Server },
+        { title: "Persona & Role Allocations", href: "/app/super-admin#personas", icon: ShieldAlert },
+        { title: "Company Management", href: "/app/super-admin/companies", icon: Building },
+        { title: "Platform Health", href: "/app/super-admin#health", icon: Activity },
+        { title: "Global Audit Trail", href: "/app/super-admin#audit", icon: ShieldAlert },
+        { title: "Platform Settings", href: "/app/super-admin/settings", icon: Settings },
+      ],
+    });
+    navGroups.push({
+      groupName: "ENTERPRISE OVERSIGHT",
+      items: [
+        { title: "Org Hierarchy Tree", href: "/app/hr/hierarchy", icon: GitBranch },
+        { title: "Company People", href: "/app/people", icon: Users },
+        { title: "CRM & Customers", href: "/app/crm", icon: Briefcase },
+        { title: "Operations & Delivery", href: "/app/operations", icon: Layers },
+        { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
+        { title: "Payroll Master", href: "/app/payroll", icon: FileCheck },
+        { title: "Products & Inventory", href: "/app/inventory", icon: Package },
       ],
     });
   }
 
+  // ========================================================
+  // 2. ADMIN (Company Administration Tier)
+  // ========================================================
+  else if (role === "ADMIN") {
+    navGroups.push({
+      groupName: "COMPANY ADMINISTRATION",
+      items: [
+        { title: "Admin Center", href: "/app/dashboard/admin", icon: ShieldAlert },
+        { title: "Users & Roles", href: "/app/people", icon: Users },
+        { title: "Organization Hierarchy", href: "/app/hr/hierarchy", icon: GitBranch },
+        { title: "Departments & Teams", href: "/app/hr", icon: Building },
+        { title: "Workflows & Automations", href: "/app/settings/workflows", icon: Zap },
+        { title: "Company Audit Trail", href: "/app/audit", icon: ShieldAlert },
+        { title: "Company Settings", href: "/app/settings/company", icon: Settings },
+      ],
+    });
+  }
+
+  // ========================================================
+  // 3. CEO & CHAIRPERSON (Executive Cockpit)
+  // ========================================================
+  else if (role === "CEO" || role === "CHAIRPERSON") {
+    navGroups.push({
+      groupName: "EXECUTIVE SUITE",
+      items: [
+        { title: "CEO Executive Cockpit", href: "/app/dashboard/ceo", icon: Sparkles },
+        ...(role === "CHAIRPERSON"
+          ? [{ title: "Chairperson Oversight", href: "/app/dashboard/chairperson", icon: Building }]
+          : []),
+        { title: "Org Hierarchy Tree", href: "/app/hr/hierarchy", icon: GitBranch },
+        { title: "Executive Approvals", href: "/app/approvals", icon: ShieldCheck },
+        { title: "Company People", href: "/app/people", icon: Users },
+        { title: "Strategic Reports", href: "/app/reports", icon: BarChart3 },
+      ],
+    });
+  }
+
+  // ========================================================
+  // 4. HR (People & Culture Tier)
+  // ========================================================
+  else if (role === "HR") {
+    navGroups.push({
+      groupName: "PEOPLE & CULTURE",
+      items: [
+        { title: "HR Executive Center", href: "/app/dashboard/hr", icon: Users },
+        { title: "Company People", href: "/app/people", icon: UserPlus },
+        { title: "Organization Hierarchy", href: "/app/hr/hierarchy", icon: GitBranch },
+        { title: "Departments & Teams", href: "/app/hr", icon: Building },
+        { title: "Attendance Roster", href: "/app/hr/attendance", icon: Clock },
+        { title: "Leave Approvals", href: "/app/approvals", icon: ShieldCheck },
+        { title: "Payroll Master", href: "/app/payroll", icon: FileCheck },
+      ],
+    });
+  }
+
+  // ========================================================
+  // 5. DOMAIN CXOs (COO, CFO, CIO/CTO, CMO)
+  // ========================================================
+  else if (role === "COO") {
+    navGroups.push({
+      groupName: "OPERATIONS LEADERSHIP",
+      items: [
+        { title: "COO Operations Hub", href: "/app/dashboard/coo", icon: Activity },
+        { title: "Service Delivery & Operations", href: "/app/operations", icon: Layers },
+        { title: "Products & Inventory", href: "/app/inventory", icon: Package },
+        { title: "Company Projects", href: "/app/projects", icon: FolderKanban },
+        { title: "Operations Approvals", href: "/app/approvals", icon: ShieldCheck },
+      ],
+    });
+  } else if (role === "CFO") {
+    navGroups.push({
+      groupName: "FINANCE & TREASURY",
+      items: [
+        { title: "CFO Treasury Center", href: "/app/dashboard/cfo", icon: IndianRupee },
+        { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
+        { title: "Payroll Operations", href: "/app/payroll", icon: FileCheck },
+        { title: "Financial Approvals", href: "/app/approvals", icon: ShieldCheck },
+      ],
+    });
+  } else if (role === "CIO" || role === "CTO") {
+    navGroups.push({
+      groupName: "TECHNOLOGY LEADERSHIP",
+      items: [
+        { title: "Tech Leadership Center", href: "/app/dashboard/cto", icon: Layers },
+        { title: "IT Infrastructure & Systems", href: "/app/operations", icon: GitBranch },
+        { title: "Hardware & IT Inventory", href: "/app/inventory", icon: Package },
+        { title: "Technology Projects", href: "/app/projects", icon: FolderKanban },
+        { title: "Tech Approvals", href: "/app/approvals", icon: ShieldCheck },
+      ],
+    });
+  } else if (role === "CMO") {
+    navGroups.push({
+      groupName: "GROWTH & MARKETING",
+      items: [
+        { title: "CMO Growth Center", href: "/app/dashboard/cmo", icon: BarChart3 },
+        { title: "CRM & Pipelines", href: "/app/crm", icon: Briefcase },
+        { title: "Marketing Campaigns", href: "/app/projects", icon: FolderKanban },
+        { title: "Marketing Approvals", href: "/app/approvals", icon: ShieldCheck },
+        { title: "Growth Analytics", href: "/app/reports", icon: Activity },
+      ],
+    });
+  }
+
+  // ========================================================
+  // 6. FUNCTIONAL TEAMS (Operations, Finance, Marketing, Intl)
+  // ========================================================
+  if (role === "EMPLOYEE" || (!isSuperAdmin && !["ADMIN", "CEO", "HR", "COO", "CFO", "CIO", "CTO", "CMO"].includes(role))) {
+    if (isOpsStaff) {
+      navGroups.push({
+        groupName: "OPERATIONS TEAM",
+        items: [
+          { title: "Operations & Delivery", href: "/app/operations", icon: Layers },
+          { title: "Products & Inventory", href: "/app/inventory", icon: Package },
+          { title: "Operations Projects", href: "/app/projects", icon: FolderKanban },
+          { title: "Team Tasks", href: "/app/tasks", icon: CheckSquare },
+        ],
+      });
+    } else if (isFinStaff) {
+      navGroups.push({
+        groupName: "FINANCE TEAM",
+        items: [
+          { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
+          { title: "Financial Tasks", href: "/app/tasks", icon: CheckSquare },
+        ],
+      });
+    } else if (isMktStaff) {
+      navGroups.push({
+        groupName: "MARKETING TEAM",
+        items: [
+          { title: "CRM & Customers", href: "/app/crm", icon: Briefcase },
+          { title: "Marketing Campaigns", href: "/app/projects", icon: FolderKanban },
+          { title: "Marketing Tasks", href: "/app/tasks", icon: CheckSquare },
+        ],
+      });
+    } else if (isIntlStaff) {
+      navGroups.push({
+        groupName: "INTERNATIONAL AFFAIRS TEAM",
+        items: [
+          { title: "International Projects", href: "/app/projects", icon: FolderKanban },
+          { title: "Global Operations", href: "/app/operations", icon: Layers },
+          { title: "International Tasks", href: "/app/tasks", icon: CheckSquare },
+        ],
+      });
+    }
+  }
+
+  // ========================================================
+  // 7. MY WORKSPACE (Universal Personal Portal)
+  // ========================================================
   navGroups.push({
-    items: [{ title: "Settings", href: "/app/settings", icon: Settings }],
+    groupName: "MY WORKSPACE",
+    items: [
+      { title: "Workspace Overview", href: "/app/overview", icon: LayoutDashboard },
+      { title: "My Tasks", href: "/app/tasks", icon: CheckSquare },
+      { title: "My Attendance", href: "/app/hr/attendance", icon: Clock },
+      { title: "My Leave", href: "/app/hr/leaves", icon: Calendar },
+      { title: "My Salary & Payslips", href: "/app/payroll/my-payslips", icon: FileCheck },
+      { title: "My Documents", href: "/app/documents", icon: FileText },
+      { title: "Request Center", href: "/app/requests", icon: FileText },
+      { title: "AI Intelligence", href: "/app/ai", icon: Sparkles },
+      { title: "Communications", href: "/app/communications", icon: MessageSquare },
+      { title: "Calendar", href: "/app/calendar", icon: Calendar },
+    ],
+  });
+
+  // Settings
+  navGroups.push({
+    items: [
+      { title: "Personal Settings", href: "/app/settings", icon: Settings },
+    ],
   });
 
   return (
@@ -161,16 +320,22 @@ export function Sidebar() {
       {/* Brand & Organization Header */}
       <div className="flex h-14 items-center justify-between px-3.5 border-b border-slate-200 dark:border-slate-800/80">
         <Link href="/app/overview" className="flex items-center gap-2.5 overflow-hidden">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-gradient-to-br from-blue-700 via-blue-800 to-indigo-950 text-amber-300 border border-amber-400/40 font-bold text-sm shadow-md shadow-blue-900/20">
-            NF
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-bold text-sm text-white shadow-md transition-colors"
+            style={{ backgroundColor: primaryColor }}
+          >
+            {companyInitials || "CR"}
           </div>
           {!collapsed && (
             <div className="flex flex-col truncate">
-              <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white">
-                CRM + NFVS
+              <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white truncate">
+                {companyName}
               </span>
-              <span className="text-[10px] text-amber-600 dark:text-amber-400/90 font-mono tracking-wider">
-                NFVS GLOBAL CORP
+              <span
+                className="text-[10px] font-mono tracking-wider truncate font-semibold"
+                style={{ color: primaryColor }}
+              >
+                {companyCode}
               </span>
             </div>
           )}
@@ -215,7 +380,7 @@ export function Sidebar() {
                     className={cn(
                       "h-4 w-4 shrink-0 transition-colors",
                       isActive
-                        ? "text-blue-600 dark:text-amber-400"
+                        ? "text-blue-600 dark:text-blue-400"
                         : "text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300"
                     )}
                   />
@@ -227,24 +392,35 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Organization Boundary Badge */}
+      {/* Tenant Boundary & Role Badge */}
       <div className="border-t border-slate-200 dark:border-slate-800/80 p-3">
         {!collapsed ? (
           <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
-            <div className="flex items-center gap-1.5">
-              <Building className="h-3.5 w-3.5 text-amber-500 dark:text-amber-400" />
-              <span className="truncate max-w-[130px]">NFVS-CORP</span>
+            <div className="flex items-center gap-1.5 truncate max-w-[130px]">
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: primaryColor }}
+              />
+              <span className="truncate font-medium">{companyName}</span>
             </div>
             <span
               suppressHydrationWarning
-              className="rounded bg-amber-50 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-700/60 px-1.5 py-0.5 text-[9px] font-mono text-amber-700 dark:text-amber-300 font-medium"
+              className="rounded px-1.5 py-0.5 text-[9px] font-mono font-medium"
+              style={{
+                backgroundColor: `${primaryColor}15`,
+                color: primaryColor,
+                border: `1px solid ${primaryColor}35`,
+              }}
             >
               {currentUser?.roleName || "Active"}
             </span>
           </div>
         ) : (
-          <div className="flex justify-center" title="Organization Active">
-            <span className="h-2 w-2 rounded-full bg-amber-500" />
+          <div className="flex justify-center" title={`${companyName} Active`}>
+            <span
+              className="h-2.5 w-2.5 rounded-full"
+              style={{ backgroundColor: primaryColor }}
+            />
           </div>
         )}
       </div>

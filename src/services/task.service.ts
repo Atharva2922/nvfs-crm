@@ -65,37 +65,173 @@ export class TaskService {
    * Helper: check if a user is an executive with global task visibility
    */
   static isExecutive(user: AuthenticatedUser): boolean {
-    const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CFO", "CMO"];
-    return execRoles.includes(user.roleCode);
+    const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CIO", "CFO", "CMO", "HR"];
+    return execRoles.includes(user.roleCode) || (user.roleLevel ?? 0) >= 70;
   }
 
   /**
    * Helper: check if user is a manager or department head
    */
   static isManager(user: AuthenticatedUser): boolean {
-    return user.roleCode === "DEPARTMENT_HEAD" || user.roleCode === "MANAGER" || this.isExecutive(user);
+    return (
+      user.roleCode === "DEPARTMENT_HEAD" ||
+      user.roleCode === "MANAGER" ||
+      user.roleCode === "HR" ||
+      (user.roleLevel ?? 0) >= 30 ||
+      this.isExecutive(user)
+    );
+  }
+
+  /**
+   * Validate CRM hierarchy task assignment delegation rules:
+   * - Super Admin: Read-only for operational tasks, cannot create or modify.
+   * - Admin: Oversees CXOs (CEO, COO, CFO, CIO, CMO, HR).
+   * - CEO: Gives orders / tasks to HR.
+   * - HR: Gives orders / tasks to domain CXOs (COO, CFO, CIO, CMO).
+   * - COO: Delegates to Operations Team.
+   * - CFO: Delegates to Finance Team.
+   * - CIO: Delegates to International Affairs & Tech Team.
+   * - CMO: Delegates to Marketing Team.
+   */
+  static validateAssignmentHierarchy(
+    creator: AuthenticatedUser,
+    assigneeEmp: {
+      id: string;
+      department?: { code: string; name: string } | null;
+      user?: { role?: { code: string; name: string } | null } | null;
+      managerId?: string | null;
+    }
+  ) {
+    if (creator.roleCode === "SUPER_ADMIN") {
+      throw new Error(
+        "Forbidden: Super Admin operates with global read-only audit visibility and role assignment privileges. Direct task creation is not permitted for Super Admin."
+      );
+    }
+
+    if (!creator.employee) return;
+    const creatorId = creator.employee.id;
+
+    // Assigning to self is always permitted
+    if (assigneeEmp.id === creatorId) return;
+
+    const assigneeRole = assigneeEmp.user?.role?.code || "";
+    const assigneeDept = assigneeEmp.department?.code || "";
+
+    // Assigning corporate tasks to staff employees is permitted for authorized creators
+    if (assigneeRole === "EMPLOYEE" || !assigneeRole) return;
+
+    // ADMIN: Oversees and directs executive CXOs and leadership
+    if (creator.roleCode === "ADMIN") {
+      const allowedRoles = ["CEO", "COO", "CFO", "CIO", "CTO", "CMO", "HR", "DEPARTMENT_HEAD", "MANAGER"];
+      if (!allowedRoles.includes(assigneeRole) && assigneeEmp.managerId !== creatorId) {
+        throw new Error(
+          `Forbidden: Platform Admin manages executive leadership (CEO, COO, CFO, CIO, CMO, HR). Cannot directly task non-executive staff.`
+        );
+      }
+      return;
+    }
+
+    // CEO: Gives order to HR (or direct executive leadership)
+    if (creator.roleCode === "CEO") {
+      if (assigneeRole !== "HR" && assigneeRole !== "ADMIN") {
+        throw new Error(
+          "Forbidden: Under the corporate CRM hierarchy, CEO gives direct orders/tasks to HR. HR will dispatch them to the respective CXOs."
+        );
+      }
+      return;
+    }
+
+    // HR: Gives order or task to CXOs (COO, CFO, CIO, CMO) or HR department personnel
+    if (creator.roleCode === "HR") {
+      const allowedRoles = ["COO", "CFO", "CIO", "CTO", "CMO", "EMPLOYEE", "MANAGER", "TEAM_LEAD"];
+      const isCXO = ["COO", "CFO", "CIO", "CTO", "CMO"].includes(assigneeRole);
+      const isHRDept = assigneeDept === "HR";
+      if (!isCXO && !isHRDept && assigneeEmp.managerId !== creatorId) {
+        throw new Error(
+          "Forbidden: Under the corporate CRM hierarchy, HR assigns orders/tasks to domain CXOs (COO, CFO, CIO, CMO) or HR personnel."
+        );
+      }
+      return;
+    }
+
+    // COO: Directs Operations Team (OPS department)
+    if (creator.roleCode === "COO") {
+      const isOps = assigneeDept === "OPS" || assigneeEmp.managerId === creatorId;
+      if (!isOps) {
+        throw new Error("Forbidden: COO delegates tasks to the Operations Team.");
+      }
+      return;
+    }
+
+    // CFO: Directs Finance Team (FIN department)
+    if (creator.roleCode === "CFO") {
+      const isFin = assigneeDept === "FIN" || assigneeEmp.managerId === creatorId;
+      if (!isFin) {
+        throw new Error("Forbidden: CFO delegates tasks to the Finance Team.");
+      }
+      return;
+    }
+
+    // CIO / CTO: Directs International Affairs & Tech Team (INTL, ENG, SW departments)
+    if (creator.roleCode === "CIO" || creator.roleCode === "CTO") {
+      const isTechOrIntl = ["INTL", "ENG", "SW", "QA"].includes(assigneeDept) || assigneeEmp.managerId === creatorId;
+      if (!isTechOrIntl) {
+        throw new Error("Forbidden: CIO delegates tasks to the International Affairs and Technology Team.");
+      }
+      return;
+    }
+
+    // CMO: Directs Marketing Team (MKT, CRM departments)
+    if (creator.roleCode === "CMO") {
+      const isMkt = ["MKT", "CRM"].includes(assigneeDept) || assigneeEmp.managerId === creatorId;
+      if (!isMkt) {
+        throw new Error("Forbidden: CMO delegates tasks to the Marketing Team.");
+      }
+      return;
+    }
+
+    // Standard Manager / Department Head / Employee
+    if (!this.isManager(creator)) {
+      throw new Error("Forbidden: Standard employees cannot assign tasks to other staff without manager privileges.");
+    }
   }
 
   /**
    * Retrieve tasks respecting organization boundary, hierarchy, and permissions
    */
   static async getTasks(user: AuthenticatedUser, filters: TaskQueryFilters = {}) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    if (!user.employee && user.roleCode !== "SUPER_ADMIN") {
+      throw new Error("Authenticated user has no employee profile");
+    }
 
-    const orgId = user.employee.organizationId;
-    const empId = user.employee.id;
+    const orgId = user.employee?.organizationId;
+    const empId = user.employee?.id;
+    const isSuperAdmin = user.roleCode === "SUPER_ADMIN";
     const isExec = this.isExecutive(user);
     const isDeptHead = user.roleCode === "DEPARTMENT_HEAD";
 
-    const where: any = { organizationId: orgId };
+    const where: any = {};
+    if (orgId && !filters.departmentId) {
+      where.organizationId = orgId;
+    } else if (filters.departmentId && filters.departmentId !== "ALL") {
+      where.departmentId = filters.departmentId;
+    }
 
     // Scope-based filtering
     const effectiveScope = filters.quickFilter === "my" ? "my" : filters.scope;
-    if (effectiveScope === "my" || (!isExec && !isDeptHead && effectiveScope !== "all")) {
+    if (isSuperAdmin) {
+      // Super Admin has global read visibility - no restrictive where.OR applied
+    } else if (empId && (effectiveScope === "my" || (!isExec && !isDeptHead && effectiveScope !== "all"))) {
       where.OR = [{ assigneeId: empId }, { creatorId: empId }];
-    } else if (isDeptHead && effectiveScope === "department") {
+    } else if (empId && isDeptHead && effectiveScope === "department") {
       where.OR = [
-        { departmentId: user.employee.departmentId || undefined },
+        { departmentId: user.employee?.departmentId || undefined },
+        { assigneeId: empId },
+        { creatorId: empId },
+        { assignee: { managerId: empId } },
+      ];
+    } else if (empId && !isExec && effectiveScope === "all") {
+      where.OR = [
         { assigneeId: empId },
         { creatorId: empId },
         { assignee: { managerId: empId } },
@@ -295,7 +431,7 @@ export class TaskService {
     });
 
     if (!task) throw new Error("Task not found");
-    if (task.organizationId !== user.employee.organizationId) {
+    if (user.roleCode !== "SUPER_ADMIN" && task.organizationId !== user.employee?.organizationId) {
       throw new Error("Unauthorized: Task belongs to another organization");
     }
 
@@ -316,6 +452,12 @@ export class TaskService {
    * Create a task respecting assignment permissions
    */
   static async createTask(user: AuthenticatedUser, data: CreateTaskInput) {
+    if (user.roleCode === "SUPER_ADMIN") {
+      throw new Error(
+        "Forbidden: Super Admin operates with global read-only audit visibility and role assignment privileges. Direct task creation is not permitted for Super Admin."
+      );
+    }
+
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
     const orgId = user.employee.organizationId;
@@ -326,20 +468,22 @@ export class TaskService {
     if (data.assigneeId) {
       const assigneeEmp = await db.employee.findUnique({
         where: { id: data.assigneeId },
-        select: { id: true, userId: true, organizationId: true, managerId: true },
+        select: {
+          id: true,
+          userId: true,
+          organizationId: true,
+          managerId: true,
+          department: { select: { code: true, name: true } },
+          user: { select: { role: { select: { code: true, name: true } } } },
+        },
       });
 
       if (!assigneeEmp || assigneeEmp.organizationId !== orgId) {
         throw new Error("Assignee employee not found in organization");
       }
 
-      // Hierarchy validation:
-      // Non-executives & non-managers can only assign to themselves or their manager
-      if (!this.isManager(user)) {
-        if (data.assigneeId !== creatorId) {
-          throw new Error("Forbidden: Standard employees cannot assign tasks to other staff without manager privileges");
-        }
-      }
+      // CRM Hierarchy delegation validation
+      this.validateAssignmentHierarchy(user, assigneeEmp);
 
       assigneeUser = assigneeEmp;
     }
@@ -405,6 +549,12 @@ export class TaskService {
    * Update task status, fields, or completion state
    */
   static async updateTask(taskId: string, user: AuthenticatedUser, data: UpdateTaskInput) {
+    if (user.roleCode === "SUPER_ADMIN") {
+      throw new Error(
+        "Forbidden: Super Admin operates with global read-only audit visibility and role assignment privileges. Operational business records cannot be modified by Super Admin."
+      );
+    }
+
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
     const existing = await db.task.findUnique({
@@ -443,9 +593,6 @@ export class TaskService {
     if (data.relatedClientId !== undefined) updatePayload.relatedClientId = data.relatedClientId;
     if (data.relatedProjectId !== undefined) updatePayload.relatedProjectId = data.relatedProjectId;
     if (data.attachments !== undefined) updatePayload.attachments = data.attachments;
-    if (data.dueDate !== undefined) {
-      updatePayload.dueDate = data.dueDate ? new Date(data.dueDate) : null;
-    }
 
     // Handle status change
     if (data.status !== undefined) {
@@ -460,10 +607,24 @@ export class TaskService {
     // Handle re-assignment
     let newAssigneeNotified = false;
     if (data.assigneeId !== undefined && data.assigneeId !== existing.assigneeId) {
-      if (!this.isManager(user)) {
-        throw new Error("Forbidden: Only managers can reassign tasks to different personnel");
+      if (data.assigneeId) {
+        const newAssigneeEmp = await db.employee.findUnique({
+          where: { id: data.assigneeId },
+          select: {
+            id: true,
+            userId: true,
+            organizationId: true,
+            managerId: true,
+            department: { select: { code: true, name: true } },
+            user: { select: { role: { select: { code: true, name: true } } } },
+          },
+        });
+        if (!newAssigneeEmp || newAssigneeEmp.organizationId !== user.employee.organizationId) {
+          throw new Error("Assignee employee not found in organization");
+        }
+        this.validateAssignmentHierarchy(user, newAssigneeEmp);
       }
-      updatePayload.assigneeId = data.assigneeId;
+      updatePayload.assigneeId = data.assigneeId || null;
       newAssigneeNotified = true;
     }
 

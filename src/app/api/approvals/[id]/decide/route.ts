@@ -1,33 +1,31 @@
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { ApprovalService } from "@/services/approval.service";
-import { successResponse, errorResponse } from "@/lib/api-response";
-import { z } from "zod";
-
-const decideSchema = z.object({
-  decision: z.enum(["APPROVED", "REJECTED"]),
-  comment: z.string().optional(),
-});
+import { ApprovalEngineService } from "@/services/approval-engine.service";
+import { errorResponse, successResponse } from "@/lib/api-response";
 
 export async function POST(
   req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user) {
+      return errorResponse("Unauthenticated", "UNAUTHORIZED", 401);
+    }
 
-    const { id } = await context.params;
+    const { id } = await params;
     const body = await req.json();
-    const validated = decideSchema.parse(body);
+    const { decision, comment } = body;
 
-    const updated = await ApprovalService.decide(user, id, validated.decision, validated.comment);
+    if (!decision || !["APPROVED", "REJECTED"].includes(decision)) {
+      return errorResponse("Decision must be either 'APPROVED' or 'REJECTED'", "VALIDATION_ERROR", 400);
+    }
+
+    const updated = await ApprovalEngineService.decide(user, id, decision, comment);
     return successResponse(updated);
   } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return errorResponse(error.issues[0]?.message || "Validation failed", "VALIDATION_ERROR", 400, error.issues);
-    }
-    console.error("[Approval Decision Error]:", error);
-    return errorResponse(error.message || "Failed to decide approval", "INTERNAL_ERROR", 500);
+    console.error("[Approval Decision API Error]:", error);
+    const statusCode = error.statusCode || (error.message?.includes("Forbidden") ? 403 : 400);
+    return errorResponse(error.message || "Failed to register approval decision", "APPROVAL_ERROR", statusCode);
   }
 }

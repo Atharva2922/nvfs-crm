@@ -39,6 +39,46 @@ export default function LoginPage() {
   // Forgot Password Modal State
   const [isForgotPasswordOpen, setIsForgotPasswordOpen] = useState(false);
 
+  // 1-Click Company Login Helper
+  const handleQuickCompanyLogin = async (
+    companyKey: "nfvs" | "naree" | "companya" | "companyb" | "hr" | "hr_naree"
+  ) => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const emailMap: Record<string, string> = {
+        nfvs: "nfvs@crm.com",
+        companya: "nfvs@crm.com",
+        naree: "naree@crm.com",
+        companyb: "naree@crm.com",
+        hr: "hr.a@apex.internal",
+        hr_naree: "hr.b@beacon.internal",
+      };
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          email: emailMap[companyKey] || "nfvs@crm.com",
+          password: "password",
+        }),
+      });
+
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        setError(json.error?.message || "Failed to authenticate company login");
+        setIsLoading(false);
+        return;
+      }
+
+      const targetDashboard = json.data?.targetDashboard || "/app/dashboard/ceo";
+      router.push(targetDashboard);
+      router.refresh();
+    } catch {
+      setError("Network error while communicating with authentication server");
+      setIsLoading(false);
+    }
+  };
+
   // Standard Email/Password Submit
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,21 +106,9 @@ export default function LoginPage() {
         return;
       }
 
-      const roleCode = json.data?.roleCode?.toUpperCase() || "";
-      let targetDashboard = "/app/overview";
-      if (roleCode === "CEO" || roleCode === "SUPER_ADMIN" || roleCode === "DIRECTOR") {
-        targetDashboard = "/app/dashboard/ceo";
-      } else if (roleCode === "CHAIRPERSON") {
-        targetDashboard = "/app/dashboard/chairperson";
-      } else if (roleCode === "CTO" || roleCode === "TECH_DIRECTOR" || roleCode === "VP_ENGINEERING") {
-        targetDashboard = "/app/dashboard/cto";
-      } else if (roleCode === "CMO" || roleCode === "MARKETING_DIRECTOR" || roleCode === "VP_GROWTH") {
-        targetDashboard = "/app/dashboard/cmo";
-      } else if (roleCode === "CFO" || roleCode === "FINANCE_DIRECTOR" || roleCode === "VP_FINANCE") {
-        targetDashboard = "/app/dashboard/cfo";
-      }
-
+      const targetDashboard = json.data?.targetDashboard || "/app/dashboard/ceo";
       router.push(targetDashboard);
+      router.refresh();
     } catch {
       setError("Network error while communicating with authentication server");
       setIsLoading(false);
@@ -313,13 +341,13 @@ export default function LoginPage() {
             <div className="space-y-2">
               <div className="inline-flex items-center gap-1.5 rounded-md bg-[#121c33] px-2.5 py-1 text-[11px] font-medium text-blue-400 border border-[#1e3258]">
                 <Server className="h-3 w-3" />
-                <span>Back-Office Authentication</span>
+                <span>Multi-Company Enterprise CRM</span>
               </div>
               <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl">
-                Sign in to CRM
+                Sign in to Company
               </h2>
               <p className="text-xs text-slate-400">
-                Enter your authorized enterprise credentials or continue directly with Google.
+                Choose an isolated company to launch or enter your company login ID.
               </p>
             </div>
 
@@ -339,45 +367,114 @@ export default function LoginPage() {
             )}
 
             {/* ========================================================= */}
-            {/* 1. SIGN IN WITH GOOGLE BUTTON (Requirement #2)           */}
+            {/* QUICK 1-CLICK COMPANY ACCESS CARDS                        */}
             {/* ========================================================= */}
-            <button
-              type="button"
-              id="google-signin-button"
-              onClick={() => setIsGoogleModalOpen(true)}
-              disabled={isLoading}
-              className="group relative flex w-full items-center justify-center gap-3 rounded-xl border border-[#1e3258] bg-[#0c1322] px-4 py-2.5 text-sm font-semibold text-slate-200 shadow-lg shadow-black/20 transition-all hover:border-blue-500/50 hover:bg-[#121c33] hover:text-white active:scale-[0.99] disabled:opacity-50"
-            >
-              {/* Official Google SVG Icon */}
-              <svg className="h-4 w-4 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.06H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.94l2.85-2.22.81-.63z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"
-                />
-              </svg>
-              <span>Continue with Google</span>
-              <span className="ml-auto text-[10px] font-mono text-slate-400 group-hover:text-blue-400">
-                Direct Gmail SSO →
-              </span>
-            </button>
+            <div className="space-y-2.5">
+              <div className="flex items-center justify-between text-[11px]">
+                <span className="font-semibold text-slate-300 uppercase tracking-wider text-[10px]">
+                  1-Click Instant Company Access
+                </span>
+                <span className="font-mono text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
+                  Strict Data Isolation Active
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {/* Company 1: Naree Foundation Venture Studio */}
+                <button
+                  type="button"
+                  onClick={() => handleQuickCompanyLogin("nfvs")}
+                  disabled={isLoading}
+                  className="group relative flex flex-col items-start p-3.5 rounded-xl border border-blue-500/30 bg-gradient-to-br from-[#0e1d3b] to-[#0a1224] hover:border-blue-400 hover:from-[#13264d] text-left transition-all shadow-lg hover:shadow-blue-500/15 active:scale-[0.98] disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between w-full mb-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600 font-bold text-xs text-white shadow-md">
+                      VS
+                    </div>
+                    <span className="text-[10px] font-mono text-blue-400 font-semibold px-1.5 py-0.5 rounded bg-blue-500/10 border border-blue-500/20">
+                      NFVS
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-white group-hover:text-blue-300 transition-colors line-clamp-1">
+                    Naree Foundation Venture Studio
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
+                    ID: <code className="text-blue-400 font-mono">nfvs</code> • Pass: <code className="text-slate-300 font-mono">password</code>
+                  </div>
+                  <div className="mt-3 flex items-center text-[11px] font-semibold text-blue-400 group-hover:translate-x-0.5 transition-transform">
+                    <span>Launch Venture Studio</span>
+                    <ArrowRight className="h-3 w-3 ml-1" />
+                  </div>
+                </button>
+
+                {/* Company 2: Naree Foundation */}
+                <button
+                  type="button"
+                  onClick={() => handleQuickCompanyLogin("naree")}
+                  disabled={isLoading}
+                  className="group relative flex flex-col items-start p-3.5 rounded-xl border border-emerald-500/30 bg-gradient-to-br from-[#09261a] to-[#081a12] hover:border-emerald-400 hover:from-[#0d3323] text-left transition-all shadow-lg hover:shadow-emerald-500/15 active:scale-[0.98] disabled:opacity-50"
+                >
+                  <div className="flex items-center justify-between w-full mb-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-600 font-bold text-xs text-white shadow-md">
+                      NF
+                    </div>
+                    <span className="text-[10px] font-mono text-emerald-400 font-semibold px-1.5 py-0.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+                      NAREE
+                    </span>
+                  </div>
+                  <div className="text-xs font-bold text-white group-hover:text-emerald-300 transition-colors line-clamp-1">
+                    Naree Foundation
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5 line-clamp-1">
+                    ID: <code className="text-emerald-400 font-mono">naree</code> • Pass: <code className="text-slate-300 font-mono">password</code>
+                  </div>
+                  <div className="mt-3 flex items-center text-[11px] font-semibold text-emerald-400 group-hover:translate-x-0.5 transition-transform">
+                    <span>Launch Foundation</span>
+                    <ArrowRight className="h-3 w-3 ml-1" />
+                  </div>
+                </button>
+
+                {/* Role Login: Chief Human Resources Officer (HR) */}
+                <button
+                  type="button"
+                  onClick={() => handleQuickCompanyLogin("hr")}
+                  disabled={isLoading}
+                  className="group relative flex flex-col items-start p-3.5 rounded-xl border border-amber-500/40 bg-gradient-to-br from-[#241a08] to-[#120c02] hover:border-amber-400 hover:from-[#33240a] text-left transition-all shadow-lg hover:shadow-amber-500/15 active:scale-[0.98] disabled:opacity-50 col-span-1 sm:col-span-2"
+                >
+                  <div className="flex items-center justify-between w-full mb-1.5">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-amber-600 font-bold text-xs text-white shadow-md">
+                        HR
+                      </div>
+                      <div>
+                        <div className="text-xs font-bold text-white group-hover:text-amber-300 transition-colors">
+                          Chief Human Resources Officer (CHRO)
+                        </div>
+                        <div className="text-[10px] text-slate-400">
+                          Job Assignment & Work Delegation Center
+                        </div>
+                      </div>
+                    </div>
+                    <span className="text-[10px] font-mono text-amber-400 font-semibold px-2 py-0.5 rounded bg-amber-500/10 border border-amber-500/30">
+                      HR ONLY
+                    </span>
+                  </div>
+                  <div className="text-[10px] text-slate-300 mt-1">
+                    Login ID: <code className="text-amber-400 font-mono font-bold bg-amber-950/60 px-1 py-0.5 rounded">hr</code> • Password: <code className="text-slate-200 font-mono font-bold bg-slate-800 px-1 py-0.5 rounded">password</code>
+                  </div>
+                  <div className="mt-2.5 flex items-center text-[11px] font-semibold text-amber-400 group-hover:translate-x-0.5 transition-transform">
+                    <span>Launch HR Dashboard & Assign Jobs</span>
+                    <ArrowRight className="h-3 w-3 ml-1" />
+                  </div>
+                </button>
+              </div>
+            </div>
 
             {/* Separator */}
-            <div className="relative flex items-center justify-center">
+            <div className="relative flex items-center justify-center pt-1">
               <div className="w-full border-t border-[#16233d]" />
-              <span className="absolute bg-[#070b16] px-3 text-[11px] font-medium uppercase tracking-wider text-slate-500">
-                or sign in with email
+              <span className="absolute bg-[#070b16] px-3 text-[10px] font-medium uppercase tracking-wider text-slate-500">
+                or enter company ID
               </span>
             </div>
 
@@ -385,25 +482,30 @@ export default function LoginPage() {
             {/* 2. CREDENTIALS LOGIN FORM                                 */}
             {/* ========================================================= */}
             <form onSubmit={handleSubmit} className="space-y-4">
-              {/* Corporate Email Field */}
+              {/* Company ID or Corporate Email Field */}
               <div className="space-y-1.5">
-                <label
-                  htmlFor="email"
-                  className="block text-xs font-medium text-slate-300"
-                >
-                  Corporate Email
-                </label>
+                <div className="flex items-center justify-between">
+                  <label
+                    htmlFor="email"
+                    className="block text-xs font-medium text-slate-300"
+                  >
+                    Company Login ID
+                  </label>
+                  <span className="text-[10px] font-mono text-slate-400">
+                    nfvs or naree
+                  </span>
+                </div>
                 <div className="relative">
                   <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400">
                     <Mail className="h-4 w-4" />
                   </div>
                   <input
                     id="email"
-                    type="email"
-                    autoComplete="email"
+                    type="text"
+                    autoComplete="username"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    placeholder="user@nfvs.internal"
+                    placeholder="Enter 'nfvs' or 'naree'"
                     className="flex h-10 w-full rounded-xl border border-[#1e3258] bg-[#0c1322] pl-9 pr-3 text-sm text-white placeholder:text-slate-500 shadow-inner transition-colors focus:border-blue-500 focus:bg-[#0e1628] focus:outline-none focus:ring-1 focus:ring-blue-500"
                     required
                   />
@@ -437,7 +539,7 @@ export default function LoginPage() {
                     autoComplete="current-password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
+                    placeholder="Enter password (default: 'password')"
                     className="flex h-10 w-full rounded-xl border border-[#1e3258] bg-[#0c1322] pl-9 pr-10 text-sm text-white placeholder:text-slate-500 shadow-inner transition-colors focus:border-blue-500 focus:bg-[#0e1628] focus:outline-none focus:ring-1 focus:ring-blue-500"
                     required
                   />

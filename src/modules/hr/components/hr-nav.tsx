@@ -13,13 +13,15 @@ import {
   CalendarOff,
   BookOpen,
   ShieldCheck,
+  Briefcase,
 } from "lucide-react";
 import { AuthenticatedUser } from "@/types";
 
 const HR_LINKS = [
   { label: "Overview", href: "/app/hr", icon: LayoutDashboard, exact: true, requiresManagement: false },
+  { label: "Job Assignments", href: "/app/dashboard/hr", icon: Briefcase, exact: false, requiresManagement: true },
   { label: "Employees", href: "/app/hr/employees", icon: Users, exact: false, requiresManagement: true },
-  { label: "Org Hierarchy", href: "/app/hr/organization", icon: Network, exact: false, requiresManagement: true },
+  { label: "Org Hierarchy", href: "/app/hr/hierarchy", icon: Network, exact: false, requiresManagement: true },
   { label: "Leave Management", href: "/app/hr/leaves", icon: CalendarDays, exact: false, requiresManagement: false },
   { label: "Attendance", href: "/app/hr/attendance", icon: Clock, exact: false, requiresManagement: false },
   { label: "Work Days & Holidays", href: "/app/hr/work-days", icon: CalendarOff, exact: false, requiresManagement: true },
@@ -38,6 +40,7 @@ export function HrNav() {
     role === "ADMIN" ||
     role === "CEO" ||
     role === "CHAIRPERSON" ||
+    role === "HR" ||
     role === "DEPARTMENT_HEAD" ||
     role === "MANAGER" ||
     roleLevel >= 30;

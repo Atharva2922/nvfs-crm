@@ -8,7 +8,7 @@ export async function GET(req: NextRequest) {
     const limit = Math.min(Number(searchParams.get("limit") || 50), 100);
     const entity = searchParams.get("entity") || undefined;
 
-    const logs = await AuditService.getLogs(limit, entity);
+    const logs = await AuditService.getLogs({ limit, entity });
     return successResponse(logs);
   } catch (error) {
     console.error("[Audit Fetch Error]:", error);

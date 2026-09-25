@@ -17,13 +17,30 @@ model Organization {
   name        String
   code        String       @unique // e.g. "NFVS-CORP"
   legalName   String?
+  logo        String?
+  favicon     String?
+  primaryColor String?     @default("#2563eb")
+  secondaryColor String?   @default("#1e40af")
+  industry    String?      @default("Technology & Enterprise Services")
+  website     String?
+  email       String?
+  phone       String?
+  address     String?
   currency    String       @default("USD")
   timezone    String       @default("UTC")
+  dateFormat  String       @default("YYYY-MM-DD")
+  fiscalYear  String       @default("JAN-DEC")
+  status      String       @default("ACTIVE") // ACTIVE, SUSPENDED, ARCHIVED
   createdAt   DateTime     @default(now())
   updatedAt   DateTime     @updatedAt
 
   departments      Department[]
+  teams            Team[]
   employees        Employee[]
+  memberships      UserCompanyMembership[]
+  companySettings  CompanySetting[]
+  roles            Role[]
+  auditLogs        AuditLog[]
   workDayConfigs   WorkDayConfig[]
   holidays         Holiday[]
   leavePolicies    LeavePolicy[]
@@ -101,6 +118,7 @@ model Department {
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
+  teams          Team[]
   employees      Employee[]
   holidays       Holiday[]
   hrPolicies     HrPolicy[]
@@ -120,21 +138,51 @@ model Department {
 }
 
 // ==========================================
+// 2B. TEAM STRUCTURE (Hierarchical Teams)
+// ==========================================
+
+model Team {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  departmentId   String
+  department     Department   @relation(fields: [departmentId], references: [id], onDelete: Cascade)
+  name           String
+  code           String       // e.g. "FE-ENG", "BE-ENG", "QA-AUTOMATION"
+  description    String?
+  leaderId       String?      // Reference to Team Lead Employee ID
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  employees      Employee[]
+
+  @@unique([departmentId, code])
+  @@index([organizationId])
+  @@index([departmentId])
+}
+
+// ==========================================
 // 3. ROLE & HIERARCHY
 // ==========================================
 
 model Role {
-  id          String           @id @default(cuid())
-  code        String           @unique // SUPER_ADMIN, ADMIN, CHAIRPERSON, CEO, CTO, CMO, CFO, DEPARTMENT_HEAD, MANAGER, EMPLOYEE
-  name        String
-  level       Int              // 100 down to 10
-  description String?
-  createdAt   DateTime         @default(now())
+  id             String           @id @default(cuid())
+  organizationId String?
+  organization   Organization?    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String           @unique // SUPER_ADMIN, ADMIN, CHAIRPERSON, CEO, CTO, CIO, CMO, CFO, COO, HR, DEPARTMENT_HEAD, MANAGER, TEAM_LEAD, EMPLOYEE
+  name           String
+  level          Int              // 100 down to 10
+  description    String?
+  dataScope      String           @default("SELF") // SELF, TEAM, DEPARTMENT, BUSINESS_UNIT, COMPANY, GLOBAL
+  status         String           @default("ACTIVE")
+  createdAt      DateTime         @default(now())
 
   users           User[]
   rolePermissions RolePermission[]
+  memberships     UserCompanyMembership[]
 
   @@index([code])
+  @@index([organizationId])
 }
 
 // ==========================================
@@ -188,6 +236,8 @@ model User {
   dashboardPreference DashboardPreference?
   aiConversations     AIConversation[]
   aiUsageLogs         AIUsageLog[]
+  memberships         UserCompanyMembership[]
+  userSettings        UserSetting[]
 
   @@index([email])
   @@index([roleId])
@@ -203,6 +253,8 @@ model Employee {
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   departmentId     String?
   department       Department?  @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  teamId           String?
+  team             Team?        @relation(fields: [teamId], references: [id], onDelete: SetNull)
   userId           String?      @unique // Optional link to User login account
   user             User?        @relation(fields: [userId], references: [id], onDelete: SetNull)
   managerId        String?
@@ -314,6 +366,7 @@ model Employee {
 
   @@index([organizationId])
   @@index([departmentId])
+  @@index([teamId])
   @@index([managerId])
   @@index([employeeNumber])
 }
@@ -511,23 +564,74 @@ model ComplianceRecord {
 // ==========================================
 
 model AuditLog {
-  id            String    @id @default(cuid())
-  actorId       String?
-  actor         User?     @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
-  action        String    // e.g. "LEAVE_APPROVED", "ATTENDANCE_CHECK_IN"
-  entity        String    // e.g. "LeaveRequest", "AttendanceRecord", "LeavePolicy"
-  entityId      String?
-  previousValue String?   // JSON previous state
-  newValue      String?   // JSON new state
-  metadata      String?   // JSON context (IP, route, reason)
-  ipAddress     String?
-  userAgent     String?
-  createdAt     DateTime  @default(now())
+  id             String        @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: SetNull)
+  actorId        String?
+  actor          User?         @relation("UserAuditLogs", fields: [actorId], references: [id], onDelete: SetNull)
+  action         String        // e.g. "LEAVE_APPROVED", "ATTENDANCE_CHECK_IN", "USER_CREATED", "COMPANY_SWITCH"
+  entity         String        // e.g. "LeaveRequest", "AttendanceRecord", "Company", "User"
+  entityId       String?
+  previousValue  String?       // JSON previous state
+  newValue       String?       // JSON new state
+  metadata       String?       // JSON context (IP, route, reason)
+  ipAddress      String?
+  userAgent      String?
+  createdAt      DateTime      @default(now())
 
   @@index([action])
   @@index([entity])
   @@index([actorId])
+  @@index([organizationId])
   @@index([createdAt])
+}
+
+// ==========================================
+// 14B. MULTI-TENANT MEMBERSHIP & SETTINGS
+// ==========================================
+
+model UserCompanyMembership {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  roleId         String?
+  role           Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  isPrimary      Boolean      @default(false)
+  status         String       @default("ACTIVE") // ACTIVE, SUSPENDED, INVITED
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, organizationId])
+  @@index([userId])
+  @@index([organizationId])
+  @@index([roleId])
+}
+
+model CompanySetting {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  category       String       @default("GENERAL") // BRANDING, SECURITY, WORKFLOW, NOTIFICATIONS, INTEGRATIONS
+  key            String
+  value          String       // JSON or string config
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, key])
+  @@index([organizationId])
+}
+
+model UserSetting {
+  id             String       @id @default(cuid())
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  key            String
+  value          String       // JSON or string config
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([userId, key])
+  @@index([userId])
 }
 
 // ==========================================

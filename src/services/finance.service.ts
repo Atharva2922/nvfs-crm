@@ -37,6 +37,21 @@ export interface FinanceOverviewData {
   };
 }
 
+interface CachedFinanceOverview {
+  data: FinanceOverviewData;
+  cachedAt: number;
+}
+const financeOverviewCache = new Map<string, CachedFinanceOverview>();
+const FINANCE_CACHE_TTL_MS = 45 * 1000; // 45 seconds
+
+export function invalidateFinanceOverviewCache(organizationId?: string) {
+  if (organizationId) {
+    financeOverviewCache.delete(organizationId);
+  } else {
+    financeOverviewCache.clear();
+  }
+}
+
 export class FinanceService {
   static isFinancialExecutive(user: AuthenticatedUser): boolean {
     const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CFO", "ADMIN"];
@@ -44,18 +59,57 @@ export class FinanceService {
   }
 
   /**
-   * Aggregates real DB data for the executive finance dashboard
+   * Aggregates real DB data for the executive finance dashboard with in-memory caching
    */
-  static async getOverview(user: AuthenticatedUser): Promise<FinanceOverviewData> {
+  static async getOverview(user: AuthenticatedUser, forceRefresh = false): Promise<FinanceOverviewData> {
     if (!user.employee) throw new Error("User has no employee profile");
     const orgId = user.employee.organizationId;
     const now = new Date();
 
-    // 1. Invoices & Receivables
-    const invoices = await db.invoice.findMany({
-      where: { organizationId: orgId, status: { not: "CANCELLED" } },
-      include: { client: { select: { name: true } } },
-    });
+    // Check in-memory telemetry cache
+    if (!forceRefresh) {
+      const cached = financeOverviewCache.get(orgId);
+      if (cached && now.getTime() - cached.cachedAt < FINANCE_CACHE_TTL_MS) {
+        return cached.data;
+      }
+    }
+
+    // Execute all queries in parallel
+    const [
+      invoices,
+      payments,
+      expenses,
+      payrollPeriods,
+      pendingPayrollPeriods,
+      txns,
+      allTxns,
+    ] = await Promise.all([
+      db.invoice.findMany({
+        where: { organizationId: orgId, status: { not: "CANCELLED" } },
+        include: { client: { select: { name: true } } },
+      }),
+      db.payment.findMany({
+        where: { organizationId: orgId, status: "COMPLETED" },
+      }),
+      db.expense.findMany({
+        where: { organizationId: orgId, status: { not: "REJECTED" } },
+      }),
+      db.payrollPeriod.findMany({
+        where: { organizationId: orgId, status: { in: ["APPROVED", "PROCESSED"] } },
+      }),
+      db.payrollPeriod.findMany({
+        where: { organizationId: orgId, status: { in: ["CALCULATED", "REVIEWED"] } },
+      }),
+      db.financialTransaction.findMany({
+        where: { organizationId: orgId },
+        orderBy: { date: "desc" },
+        take: 10,
+      }),
+      db.financialTransaction.findMany({
+        where: { organizationId: orgId },
+        select: { amount: true, direction: true, date: true, type: true },
+      }),
+    ]);
 
     let totalInvoiced = 0;
     let accountsReceivable = 0;
@@ -95,16 +149,8 @@ export class FinanceService {
       }
     }
 
-    // 2. Payments Collected (Total Revenue Inflow)
-    const payments = await db.payment.findMany({
-      where: { organizationId: orgId, status: "COMPLETED" },
-    });
     const totalCollectedRevenue = payments.reduce((sum, p) => sum + p.amount, 0);
 
-    // 3. Expenses
-    const expenses = await db.expense.findMany({
-      where: { organizationId: orgId, status: { not: "REJECTED" } },
-    });
     let totalExpenses = 0;
     let approvedUnpaidExpenses = 0;
     for (const exp of expenses) {
@@ -116,36 +162,14 @@ export class FinanceService {
       }
     }
 
-    // 4. Payroll Runs
-    const payrollPeriods = await db.payrollPeriod.findMany({
-      where: { organizationId: orgId, status: { in: ["APPROVED", "PROCESSED"] } },
-    });
     const payrollCost = payrollPeriods.reduce((sum, p) => sum + p.totalNet, 0);
-
-    // Pending unposted/draft payroll
-    const pendingPayrollPeriods = await db.payrollPeriod.findMany({
-      where: { organizationId: orgId, status: { in: ["CALCULATED", "REVIEWED"] } },
-    });
     const pendingPayrollObligation = pendingPayrollPeriods.reduce((sum, p) => sum + p.totalNet, 0);
 
-    // 5. Net Profit
     const netProfit = totalCollectedRevenue - (totalExpenses + payrollCost);
     const accountsPayable = approvedUnpaidExpenses + pendingPayrollObligation;
 
-    // 6. Cash Flow & Financial Transactions
-    const txns = await db.financialTransaction.findMany({
-      where: { organizationId: orgId },
-      orderBy: { date: "desc" },
-      take: 10,
-    });
-
     let totalInflow = 0;
     let totalOutflow = 0;
-    const allTxns = await db.financialTransaction.findMany({
-      where: { organizationId: orgId },
-      select: { amount: true, direction: true, date: true, type: true },
-    });
-
     for (const t of allTxns) {
       if (t.direction === "INFLOW") totalInflow += t.amount;
       else totalOutflow += t.amount;
@@ -194,7 +218,7 @@ export class FinanceService {
       expenseTrend.push({ month: label, expenses: Math.round(mExpenses), payroll: Math.round(mPayroll) });
     }
 
-    return {
+    const result: FinanceOverviewData = {
       kpis: {
         totalRevenue: Math.round(totalCollectedRevenue),
         totalExpenses: Math.round(totalExpenses + payrollCost),
@@ -229,5 +253,8 @@ export class FinanceService {
         total: Math.round(accountsPayable),
       },
     };
+
+    financeOverviewCache.set(orgId, { data: result, cachedAt: Date.now() });
+    return result;
   }
 }

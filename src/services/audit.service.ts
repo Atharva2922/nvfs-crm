@@ -2,6 +2,8 @@ import { db } from "@/lib/db";
 
 export interface LogMutationParams {
   actorId?: string | null;
+  organizationId?: string | null;
+  companyId?: string | null;
   action: string;
   entity: string;
   entityId?: string | null;
@@ -25,6 +27,8 @@ export class AuditService {
    */
   static async logMutation({
     actorId,
+    organizationId,
+    companyId,
     action,
     entity,
     entityId,
@@ -35,9 +39,11 @@ export class AuditService {
     userAgent,
   }: LogMutationParams) {
     try {
+      const orgId = organizationId || companyId || null;
       return await db.auditLog.create({
         data: {
           actorId: actorId || null,
+          organizationId: orgId,
           action,
           entity,
           entityId: entityId || null,
@@ -55,14 +61,42 @@ export class AuditService {
   }
 
   /**
-   * Retrieves audit logs with optional filtering
+   * Retrieves audit logs with optional organization and entity filtering
    */
-  static async getLogs(limit = 50, entity?: string) {
+  static async getLogs(
+    options: {
+      limit?: number;
+      entity?: string;
+      action?: string;
+      organizationId?: string;
+    } = {}
+  ) {
+    const limit = Math.min(options.limit || 50, 100);
+    const where: any = {};
+
+    if (options.organizationId) {
+      where.organizationId = options.organizationId;
+    }
+    if (options.entity) {
+      where.entity = options.entity;
+    }
+    if (options.action) {
+      where.action = options.action;
+    }
+
     return db.auditLog.findMany({
-      where: entity ? { entity } : undefined,
-      take: Math.min(limit, 100),
+      where,
+      take: limit,
       orderBy: { createdAt: "desc" },
       include: {
+        organization: {
+          select: {
+            id: true,
+            name: true,
+            code: true,
+            primaryColor: true,
+          },
+        },
         actor: {
           select: {
             id: true,
@@ -72,6 +106,8 @@ export class AuditService {
               select: {
                 firstName: true,
                 lastName: true,
+                avatarUrl: true,
+                designation: true,
               },
             },
           },

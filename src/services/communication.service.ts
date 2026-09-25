@@ -13,6 +13,22 @@ export interface SendMessageInput {
   mentions?: string[]; // Array of employee IDs or user IDs
 }
 
+// In-memory unread count cache to eliminate database polling bottleneck
+interface CachedUnreadCount {
+  count: number;
+  cachedAt: number;
+}
+const unreadCountCache = new Map<string, CachedUnreadCount>();
+const UNREAD_CACHE_TTL_MS = 25 * 1000; // 25s
+
+export function invalidateCommunicationUnreadCache(employeeId?: string) {
+  if (employeeId) {
+    unreadCountCache.delete(employeeId);
+  } else {
+    unreadCountCache.clear();
+  }
+}
+
 export class CommunicationService {
   /**
    * Helper: Extracts @mentions in message body (e.g. @Rahul or @John) and resolves employee IDs
@@ -390,6 +406,8 @@ export class CommunicationService {
       data: { lastReadAt: new Date() },
     });
 
+    invalidateCommunicationUnreadCache(empId);
+
     return conversation;
   }
 
@@ -504,6 +522,8 @@ export class CommunicationService {
         data: { lastReadAt: new Date() },
       }),
     ]);
+
+    invalidateCommunicationUnreadCache();
 
     // 3. Process @Mentions
     const actionUrl = conversation.recordType && conversation.recordId
@@ -767,12 +787,19 @@ export class CommunicationService {
   }
 
   /**
-   * Get unread message count for global header badge
+   * Get unread message count for global header badge with fast in-memory caching and batch query
    */
   static async getUnreadCount(user: AuthenticatedUser): Promise<number> {
     if (!user.employee) return 0;
     const orgId = user.employee.organizationId;
     const empId = user.employee.id;
+
+    // Check fast in-memory cache
+    const cached = unreadCountCache.get(empId);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < UNREAD_CACHE_TTL_MS) {
+      return cached.count;
+    }
 
     const myParticipations = await db.conversationParticipant.findMany({
       where: {
@@ -782,21 +809,31 @@ export class CommunicationService {
       select: { conversationId: true, lastReadAt: true },
     });
 
-    if (myParticipations.length === 0) return 0;
-
-    let totalUnread = 0;
-    for (const p of myParticipations) {
-      const unreadCount = await db.message.count({
-        where: {
-          conversationId: p.conversationId,
-          senderId: { not: empId },
-          isDeleted: false,
-          createdAt: { gt: p.lastReadAt },
-        },
-      });
-      if (unreadCount > 0) totalUnread += 1;
+    if (myParticipations.length === 0) {
+      unreadCountCache.set(empId, { count: 0, cachedAt: now });
+      return 0;
     }
 
+    const conditions = myParticipations.map((p) => ({
+      conversationId: p.conversationId,
+      senderId: { not: empId },
+      isDeleted: false,
+      createdAt: { gt: p.lastReadAt },
+    }));
+
+    // Single batch query with distinct conversationIds eliminates N+1 loops
+    const unreadMessages = await db.message.findMany({
+      where: {
+        OR: conditions,
+      },
+      select: {
+        conversationId: true,
+      },
+      distinct: ["conversationId"],
+    });
+
+    const totalUnread = unreadMessages.length;
+    unreadCountCache.set(empId, { count: totalUnread, cachedAt: Date.now() });
     return totalUnread;
   }
 }

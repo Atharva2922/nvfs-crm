@@ -7,6 +7,21 @@ export interface GetNotificationsOptions {
   type?: string;
 }
 
+interface CachedNotificationUnread {
+  count: number;
+  cachedAt: number;
+}
+const notificationUnreadCache = new Map<string, CachedNotificationUnread>();
+const NOTIFICATION_CACHE_TTL_MS = 25 * 1000; // 25s
+
+export function invalidateNotificationUnreadCache(userId?: string) {
+  if (userId) {
+    notificationUnreadCache.delete(userId);
+  } else {
+    notificationUnreadCache.clear();
+  }
+}
+
 export class NotificationService {
   /**
    * Retrieves notifications for a given user
@@ -44,34 +59,30 @@ export class NotificationService {
    * Marks a specific notification as read
    */
   static async markAsRead(notificationId: string, userId: string) {
-    const notification = await db.notification.findFirst({
-      where: { id: notificationId, userId },
-    });
-
-    if (!notification) {
-      throw new Error("Notification not found");
-    }
-
-    return db.notification.update({
+    const res = await db.notification.update({
       where: { id: notificationId },
       data: {
         isRead: true,
         readAt: new Date(),
       },
     });
+    invalidateNotificationUnreadCache(userId);
+    return res;
   }
 
   /**
    * Marks all unread notifications as read for a user
    */
   static async markAllAsRead(userId: string) {
-    return db.notification.updateMany({
+    const res = await db.notification.updateMany({
       where: { userId, isRead: false },
       data: {
         isRead: true,
         readAt: new Date(),
       },
     });
+    invalidateNotificationUnreadCache(userId);
+    return res;
   }
 
   /**
@@ -92,11 +103,20 @@ export class NotificationService {
   }
 
   /**
-   * Fast count of unread notifications for header bell badge
+   * Fast count of unread notifications for header bell badge with in-memory caching
    */
   static async getUnreadCount(userId: string) {
-    return db.notification.count({
+    const cached = notificationUnreadCache.get(userId);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < NOTIFICATION_CACHE_TTL_MS) {
+      return cached.count;
+    }
+
+    const count = await db.notification.count({
       where: { userId, isRead: false },
     });
+
+    notificationUnreadCache.set(userId, { count, cachedAt: Date.now() });
+    return count;
   }
 }

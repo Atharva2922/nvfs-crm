@@ -69,8 +69,8 @@ export class RbacService {
     actor: AuthenticatedUser,
     targetEmployeeId: string
   ): Promise<boolean> {
-    // Super Admin, Chairperson, and CEO have company-wide access
-    if (["SUPER_ADMIN", "CHAIRPERSON", "CEO"].includes(actor.roleCode)) {
+    // Super Admin, Chairperson, CEO, HR, ADMIN, COO have company-wide access
+    if (["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "HR", "COO"].includes(actor.roleCode) || (actor.roleLevel ?? 0) >= 70) {
       return true;
     }
 
@@ -96,10 +96,11 @@ export class RbacService {
       return subordinateIds.includes(targetEmployeeId);
     }
 
-    // CTO: Technology & Engineering department
-    if (actor.roleCode === "CTO") {
-      const engDept = await db.department.findFirst({ where: { code: "ENG" } });
-      return target.departmentId === engDept?.id || target.id === actor.employee?.id;
+    // CTO / CIO: Technology, Engineering & International Affairs department
+    if (actor.roleCode === "CTO" || actor.roleCode === "CIO") {
+      const depts = await db.department.findMany({ where: { code: { in: ["ENG", "SW", "INTL"] } } });
+      const deptIds = depts.map((d) => d.id);
+      return deptIds.includes(target.departmentId || "") || target.id === actor.employee?.id;
     }
 
     // CFO: Finance & Treasury department
@@ -108,13 +109,31 @@ export class RbacService {
       return target.departmentId === finDept?.id || target.id === actor.employee?.id;
     }
 
-    // CMO: Commercial & Sales department
+    // CMO: Commercial & Marketing department
     if (actor.roleCode === "CMO") {
-      const crmDept = await db.department.findFirst({ where: { code: "CRM" } });
+      const crmDept = await db.department.findFirst({ where: { code: { in: ["CRM", "MKT"] } } });
       return target.departmentId === crmDept?.id || target.id === actor.employee?.id;
+    }
+
+    // COO: Operations & Logistics department
+    if (actor.roleCode === "COO") {
+      const opsDept = await db.department.findFirst({ where: { code: "OPS" } });
+      return target.departmentId === opsDept?.id || target.id === actor.employee?.id;
     }
 
     // Individual Employee: can view directory details
     return true;
+  }
+
+  /**
+   * Enforces business data modification rule:
+   * Super Admin can view all data, but cannot modify operational records.
+   */
+  static assertCanModifyBusinessData(actor: AuthenticatedUser): void {
+    if (actor.roleCode === "SUPER_ADMIN") {
+      throw new Error(
+        "Super Admin operates with global read-only audit visibility and role assignment privileges. Operational business records cannot be modified by Super Admin."
+      );
+    }
   }
 }

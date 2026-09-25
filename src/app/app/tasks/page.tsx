@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { PageHeader } from "@/components/layout/page-header";
 import { Pagination } from "@/components/ui/pagination";
@@ -25,14 +25,17 @@ import {
   Tag,
   Briefcase,
   ChevronRight,
+  ChevronDown,
   Shield,
   X,
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
-  RotateCcw
+  RotateCcw,
+  UserCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface TaskItem {
   id: string;
@@ -83,7 +86,63 @@ interface EmployeeOption {
   id: string;
   firstName: string;
   lastName: string;
+  email?: string;
   designation: string;
+  department?: { id?: string; name: string; code?: string } | null;
+  isFree?: boolean;
+  busyReason?: string | null;
+  activeTasksCount?: number;
+  user?: { email?: string; role?: { code?: string; name?: string; level?: number } | null } | null;
+}
+
+// Roles considered leadership/executive — excluded from the Staff assignee window
+const LEADERSHIP_ROLES = new Set([
+  "SUPER_ADMIN", "ADMIN", "CHAIRPERSON", "CEO", "COO", "CFO", "CIO", "CTO", "CMO", "HR", "DIRECTOR", "MANAGER", "VP"
+]);
+
+function getRoleCode(emp: EmployeeOption): string {
+  return emp.user?.role?.code || "EMPLOYEE";
+}
+
+function isExecutiveOrLeadership(emp: EmployeeOption): boolean {
+  const email = (emp.email || emp.user?.email || "").toLowerCase();
+  // 1. Exclude all core structural architecture personas (*.internal)
+  if (email.endsWith(".internal")) return true;
+
+  // 2. Exclude by role code and level
+  const roleCode = getRoleCode(emp).toUpperCase();
+  const roleLevel = emp.user?.role?.level ?? 10;
+  if (LEADERSHIP_ROLES.has(roleCode) || roleLevel >= 30 || (roleCode && roleCode !== "EMPLOYEE")) {
+    return true;
+  }
+
+  // 3. Exclude by designation keywords (executives, CXOs, managers, controllers, directors, officers)
+  const des = (emp.designation || "").toLowerCase();
+  return (
+    des.includes("chief") ||
+    des.includes("ceo") ||
+    des.includes("cto") ||
+    des.includes("cio") ||
+    des.includes("cfo") ||
+    des.includes("coo") ||
+    des.includes("cmo") ||
+    des.includes("cxo") ||
+    des.includes("administrator") ||
+    des.includes("admin") ||
+    des.includes("chairperson") ||
+    des.includes("director") ||
+    des.includes("human resources") ||
+    des.includes("hr") ||
+    des.includes("head") ||
+    des.includes("vp") ||
+    des.includes("vice president") ||
+    des.includes("manager") ||
+    des.includes("lead") ||
+    des.includes("controller") ||
+    des.includes("officer") ||
+    des.includes("executive") ||
+    des.includes("supervisor")
+  );
 }
 
 interface ClientOption {
@@ -93,6 +152,9 @@ interface ClientOption {
 }
 
 export default function TasksPage() {
+  const { user, isSuperAdmin, activeCompany } = useAuth();
+  const activeCompanyId =
+    activeCompany?.id || user?.activeCompany?.id || user?.employee?.organizationId;
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -184,7 +246,11 @@ export default function TasksPage() {
       params.set("page", String(viewMode === "kanban" ? 1 : page));
       params.set("limit", String(viewMode === "kanban" ? 100 : limit));
 
-      const res = await fetch(`/api/tasks?${params.toString()}`);
+      if (activeCompanyId) params.set("organizationId", activeCompanyId);
+
+      const res = await fetch(`/api/tasks?${params.toString()}`, {
+        headers: activeCompanyId ? { "x-company-id": activeCompanyId } : {},
+      });
       const data = await res.json();
       if (data.success) {
         const items = data.data.tasks || [];
@@ -205,7 +271,9 @@ export default function TasksPage() {
             handleSelectTask(found);
           } else {
             // Fetch directly
-            fetch(`/api/tasks/${targetId}`)
+            fetch(`/api/tasks/${targetId}`, {
+              headers: activeCompanyId ? { "x-company-id": activeCompanyId } : {},
+            })
               .then((r) => r.json())
               .then((d) => {
                 if (d.success && d.data) setSelectedTask(d.data);
@@ -221,34 +289,85 @@ export default function TasksPage() {
     }
   };
 
-  const fetchEmployees = async () => {
-    try {
-      const res = await fetch("/api/employees?limit=100");
-      const data = await res.json();
-      if (data.success && data.data.employees) {
-        setEmployees(data.data.employees);
-      }
-    } catch {}
-  };
+  // Strictly filter to regular staff employees — NO EXECUTIVES OR LEADERSHIP
+  const staffEmployees = useMemo(
+    () => employees.filter((e) => !isExecutiveOrLeadership(e)),
+    [employees]
+  );
 
-  const fetchClients = async () => {
+  // Assignee dropdown state
+  const [assigneeSearch, setAssigneeSearch] = useState("");
+  const [assigneeDropdownOpen, setAssigneeDropdownOpen] = useState(false);
+  const assigneeDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!assigneeDropdownOpen) return;
+    function handleOutside(e: MouseEvent) {
+      if (assigneeDropdownRef.current && !assigneeDropdownRef.current.contains(e.target as Node)) {
+        setAssigneeDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleOutside);
+    return () => document.removeEventListener("mousedown", handleOutside);
+  }, [assigneeDropdownOpen]);
+
+  const matchesSearch = useCallback(
+    (e: EmployeeOption) =>
+      `${e.firstName} ${e.lastName} ${e.designation} ${e.department?.name || ""}`
+        .toLowerCase()
+        .includes(assigneeSearch.toLowerCase()),
+    [assigneeSearch]
+  );
+
+  // Filtered staff list for the assignee window (NO EXECUTIVES)
+  const filteredStaff = useMemo(
+    () => staffEmployees.filter(matchesSearch),
+    [staffEmployees, matchesSearch]
+  );
+
+  const selectedAssignee = newTaskAssigneeId
+    ? staffEmployees.find((e) => e.id === newTaskAssigneeId) || employees.find((e) => e.id === newTaskAssigneeId)
+    : null;
+
+  const fetchEmployees = useCallback(async () => {
     try {
-      const res = await fetch("/api/crm/clients?limit=200");
+      const url = activeCompanyId
+        ? `/api/employees?limit=200&organizationId=${encodeURIComponent(activeCompanyId)}`
+        : "/api/employees?limit=200";
+      const res = await fetch(url, {
+        headers: activeCompanyId ? { "x-company-id": activeCompanyId } : {},
+      });
+      const data = await res.json();
+      if (data.success) {
+        const list = Array.isArray(data.data) ? data.data : (data.data?.employees || data.data?.items || []);
+        setEmployees(list);
+      }
+    } catch (err) {
+      console.error("fetchEmployees error:", err);
+    }
+  }, [activeCompanyId]);
+
+  const fetchClients = useCallback(async () => {
+    try {
+      const res = await fetch("/api/crm/clients?limit=200", {
+        headers: activeCompanyId ? { "x-company-id": activeCompanyId } : {},
+      });
       const data = await res.json();
       if (data.success && data.data.clients) {
         setClients(data.data.clients);
       }
     } catch {}
-  };
+  }, [activeCompanyId]);
 
   useEffect(() => {
     fetchTasks();
-  }, [scope, quickFilter, statusFilter, priorityFilter, assigneeFilter, clientFilter, debouncedSearch, sortBy, sortOrder, page, viewMode]);
+  }, [scope, quickFilter, statusFilter, priorityFilter, assigneeFilter, clientFilter, debouncedSearch, sortBy, sortOrder, page, viewMode, activeCompanyId]);
 
   useEffect(() => {
     fetchEmployees();
     fetchClients();
-  }, []);
+  }, [fetchEmployees, fetchClients]);
 
   const handleSort = (field: string) => {
     if (sortBy === field) {
@@ -326,7 +445,10 @@ export default function TasksPage() {
       setIsCreating(true);
       const res = await fetch("/api/tasks", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(activeCompanyId ? { "x-company-id": activeCompanyId } : {}),
+        },
         body: JSON.stringify({
           title: newTaskTitle,
           description: newTaskDesc || undefined,
@@ -335,6 +457,7 @@ export default function TasksPage() {
           dueDate: newTaskDueDate || undefined,
           relatedProjectId: newTaskProject || undefined,
           relatedClientId: newTaskClient || undefined,
+          organizationId: activeCompanyId,
         }),
       });
 
@@ -528,18 +651,20 @@ export default function TasksPage() {
             />
           </div>
 
-          {/* Assignee Filter */}
+          {/* Assignee Filter — Staff Employees Only */}
           <select
             value={assigneeFilter}
             onChange={(e) => {
               setAssigneeFilter(e.target.value);
               setPage(1);
             }}
-            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[160px]"
+            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[200px]"
           >
             <option value="ALL">All Assignees</option>
-            {employees.map((emp) => (
-              <option key={emp.id} value={emp.id}>{emp.firstName} {emp.lastName}</option>
+            {staffEmployees.map((emp) => (
+              <option key={emp.id} value={emp.id}>
+                {emp.isFree ? "🟢" : "🟡"} {emp.firstName} {emp.lastName} ({emp.designation})
+              </option>
             ))}
           </select>
 
@@ -1074,6 +1199,18 @@ export default function TasksPage() {
               </div>
             )}
 
+            {(isSuperAdmin || user?.roleCode === "SUPER_ADMIN") && (
+              <div className="mb-4 rounded-lg bg-blue-500/10 border border-blue-500/30 p-3 text-xs text-blue-300 flex items-start gap-2.5">
+                <Shield className="h-4 w-4 text-blue-400 mt-0.5 shrink-0" />
+                <div className="space-y-1">
+                  <p className="font-bold text-blue-200">Platform Super Admin: Read-Only Audit Oversight</p>
+                  <p className="text-[11px] text-blue-300/80 leading-relaxed">
+                    Under the CRM architecture, Super Admin monitors all corporate tasks across organizations and assigns persona roles. Direct operational task creation is delegated to operational management (Admin &gt; CEO &gt; HR &gt; CXOs &gt; Teams).
+                  </p>
+                </div>
+              </div>
+            )}
+
             <form onSubmit={handleCreateTask} className="space-y-4 text-xs">
               <div>
                 <label className="block font-medium text-slate-300 mb-1">Task Title *</label>
@@ -1114,19 +1251,168 @@ export default function TasksPage() {
                 </div>
 
                 <div>
-                  <label className="block font-medium text-slate-300 mb-1">Assignee</label>
-                  <select
-                    value={newTaskAssigneeId}
-                    onChange={(e) => setNewTaskAssigneeId(e.target.value)}
-                    className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-slate-100 focus:border-blue-500 focus:outline-none"
-                  >
-                    <option value="">Unassigned</option>
-                    {employees.map((emp) => (
-                      <option key={emp.id} value={emp.id}>
-                        {emp.firstName} {emp.lastName} ({emp.designation})
-                      </option>
-                    ))}
-                  </select>
+                  <label className="block font-medium text-slate-300 mb-1">Assign To</label>
+
+                  {/* Custom Assignee Dropdown */}
+                  <div ref={assigneeDropdownRef} className="relative">
+                    {/* Trigger button */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAssigneeDropdownOpen((v) => !v);
+                        setAssigneeSearch("");
+                      }}
+                      className={cn(
+                        "w-full flex items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-all",
+                        assigneeDropdownOpen
+                          ? "border-blue-500 bg-slate-900 ring-1 ring-blue-500/30"
+                          : "border-slate-700 bg-slate-900 hover:border-slate-600"
+                      )}
+                    >
+                      {selectedAssignee ? (
+                        <>
+                          <span className="text-sm">
+                            {selectedAssignee.isFree ? "🟢" : "🟡"}
+                          </span>
+                          <div className="flex-1 text-left min-w-0">
+                            <span className="font-semibold text-slate-100 truncate block">
+                              {selectedAssignee.firstName} {selectedAssignee.lastName}
+                            </span>
+                            <span className="text-slate-400 text-[10px] truncate block">
+                              {selectedAssignee.designation}{selectedAssignee.department ? ` · ${selectedAssignee.department.name}` : ""}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(ev) => { ev.stopPropagation(); setNewTaskAssigneeId(""); }}
+                            className="shrink-0 rounded p-0.5 text-slate-500 hover:bg-slate-800 hover:text-rose-400 transition-colors"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <UserCheck className="h-3.5 w-3.5 text-slate-500" />
+                          <span className="flex-1 text-left text-slate-500">Select employee...</span>
+                          <ChevronDown className={cn("h-3.5 w-3.5 text-slate-500 transition-transform", assigneeDropdownOpen && "rotate-180")} />
+                        </>
+                      )}
+                    </button>
+
+                    {/* Dropdown panel */}
+                    {assigneeDropdownOpen && (
+                      <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-xl border border-slate-700 bg-[#0c1225] shadow-2xl shadow-black/60 overflow-hidden animate-in fade-in zoom-in-95">
+                        {/* Search bar */}
+                        <div className="p-2 border-b border-slate-800">
+                          <div className="relative">
+                            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+                            <input
+                              autoFocus
+                              type="text"
+                              placeholder="Search employee name, designation, department..."
+                              value={assigneeSearch}
+                              onChange={(e) => setAssigneeSearch(e.target.value)}
+                              className="w-full rounded-md border border-slate-700 bg-slate-900 pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Option list */}
+                        <div className="max-h-56 overflow-y-auto py-1">
+                          {/* Unassigned option */}
+                          <button
+                            type="button"
+                            onClick={() => { setNewTaskAssigneeId(""); setAssigneeDropdownOpen(false); }}
+                            className={cn(
+                              "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
+                              !newTaskAssigneeId
+                                ? "bg-blue-600/20 text-blue-300"
+                                : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                            )}
+                          >
+                            <span className="text-slate-500">—</span>
+                            <span>Unassigned</span>
+                          </button>
+
+                          {/* Staff Employees Group — strictly staff employees only */}
+                          {filteredStaff.length > 0 ? (
+                            <>
+                              <div className="flex items-center gap-1.5 px-3 py-1.5 mt-1 border-t border-slate-800/60">
+                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                  👷 Assignable Staff Employees
+                                </span>
+                                <span className="ml-auto rounded-full bg-slate-800 px-1.5 py-0.5 text-[9px] font-mono text-slate-400">
+                                  {filteredStaff.length}
+                                </span>
+                              </div>
+                              {filteredStaff.map((emp) => (
+                                <button
+                                  key={emp.id}
+                                  type="button"
+                                  onClick={() => {
+                                    setNewTaskAssigneeId(emp.id);
+                                    setAssigneeDropdownOpen(false);
+                                    setAssigneeSearch("");
+                                  }}
+                                  className={cn(
+                                    "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors group",
+                                    newTaskAssigneeId === emp.id
+                                      ? "bg-blue-600/20 text-blue-300"
+                                      : "text-slate-300 hover:bg-slate-800/70 hover:text-slate-100"
+                                  )}
+                                >
+                                  <span className="text-sm shrink-0">{emp.isFree ? "🟢" : "🟡"}</span>
+                                  <div className="flex-1 text-left min-w-0">
+                                    <p className="font-medium truncate">{emp.firstName} {emp.lastName}</p>
+                                    <p className="text-[10px] text-slate-500 group-hover:text-slate-400 truncate">
+                                      {emp.designation}{emp.department ? ` · ${emp.department.name}` : ""}
+                                    </p>
+                                  </div>
+                                  {emp.isFree ? (
+                                    <span className="shrink-0 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400">
+                                      Free
+                                    </span>
+                                  ) : (
+                                    <span className="shrink-0 rounded-full bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
+                                      Busy
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </>
+                          ) : (
+                            <div className="px-3 py-6 text-center text-xs text-slate-500">
+                              {assigneeSearch.trim()
+                                ? `No staff employees match "${assigneeSearch}"`
+                                : "No staff employees available"}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Selected preview card (shown below trigger when closed) */}
+                  {selectedAssignee && !assigneeDropdownOpen && (
+                    <div className={cn(
+                      "mt-2 rounded-lg px-3 py-2.5 flex items-center gap-3 text-xs border",
+                      selectedAssignee.isFree
+                        ? "bg-emerald-950/50 border-emerald-700/30 text-emerald-300"
+                        : "bg-amber-950/50 border-amber-700/30 text-amber-300"
+                    )}>
+                      <span className="text-base">
+                        {selectedAssignee.isFree ? "🟢" : "🟡"}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-semibold truncate">{selectedAssignee.firstName} {selectedAssignee.lastName}</p>
+                        <p className="opacity-70 truncate text-[10px]">
+                          {selectedAssignee.isFree
+                            ? `Free · ${selectedAssignee.designation}`
+                            : `Busy · ${selectedAssignee.busyReason || "has active workload"}`}
+                        </p>
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -1173,10 +1459,14 @@ export default function TasksPage() {
                 </button>
                 <button
                   type="submit"
-                  disabled={isCreating}
+                  disabled={isCreating || isSuperAdmin || user?.roleCode === "SUPER_ADMIN"}
                   className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50"
                 >
-                  {isCreating ? "Creating..." : "Create Task"}
+                  {isSuperAdmin || user?.roleCode === "SUPER_ADMIN"
+                    ? "Read-Only Audit Mode"
+                    : isCreating
+                    ? "Creating..."
+                    : "Create Task"}
                 </button>
               </div>
             </form>

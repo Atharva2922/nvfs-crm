@@ -26,7 +26,9 @@ export async function GET(
   try {
     const { id } = await context.params;
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user || (!user.employee && user.roleCode !== "SUPER_ADMIN")) {
+      return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
 
     const task = await TaskService.getTaskById(id, user);
     return successResponse(task);

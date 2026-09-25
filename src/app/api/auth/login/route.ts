@@ -4,7 +4,7 @@ import { AuthService } from "@/services/auth.service";
 import { AuditService } from "@/services/audit.service";
 import { errorResponse, successResponse } from "@/lib/api-response";
 import { loginSchema } from "@/validations/auth.schema";
-import { createSessionToken, SESSION_COOKIE_NAME } from "@/lib/auth";
+import { createSessionToken, SESSION_COOKIE_NAME, invalidateUserSessionCache } from "@/lib/auth";
 
 export async function POST(req: NextRequest) {
   try {
@@ -47,19 +47,40 @@ export async function POST(req: NextRequest) {
       path: "/",
     });
 
+    // Explicitly set active company context cookie to guarantee immediate tenant isolation
+    const companyId = user.activeCompany?.id || user.employee?.organizationId;
+    if (companyId) {
+      cookieStore.set("nfvs_active_company", companyId, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        maxAge: 7 * 24 * 60 * 60,
+        path: "/",
+      });
+    }
+
+    invalidateUserSessionCache(user.id);
+
     // Audit log
     await AuditService.logMutation({
       actorId: user.id,
+      organizationId: companyId || undefined,
       action: "AUTH_LOGIN_SUCCESS",
       entity: "User",
       entityId: user.id,
-      newValue: { email: user.email, role: user.roleCode },
+      newValue: { email: user.email, role: user.roleCode, companyId },
       metadata: { source: "login_route" },
       ipAddress: req.headers.get("x-forwarded-for") || "127.0.0.1",
       userAgent: req.headers.get("user-agent") || "Browser",
     });
 
-    return successResponse(user);
+    const targetDashboard =
+      user.roleCode === "SUPER_ADMIN"
+        ? "/app/super-admin"
+        : user.roleCode === "HR"
+        ? "/app/dashboard/hr"
+        : "/app/dashboard/ceo";
+    return successResponse({ ...user, targetDashboard });
   } catch (error) {
     console.error("[Login API Error]:", error);
     return errorResponse(

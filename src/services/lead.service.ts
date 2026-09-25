@@ -39,6 +39,25 @@ export interface ConvertLeadOptions {
   notes?: string;
 }
 
+interface CachedLeadQuery {
+  data: any;
+  cachedAt: number;
+}
+const leadQueryCache = new Map<string, CachedLeadQuery>();
+const LEAD_CACHE_TTL_MS = 20 * 1000; // 20 seconds
+
+export function invalidateLeadCache(organizationId?: string) {
+  if (organizationId) {
+    for (const key of leadQueryCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        leadQueryCache.delete(key);
+      }
+    }
+  } else {
+    leadQueryCache.clear();
+  }
+}
+
 export class LeadService {
   static isExecutive(user: AuthenticatedUser): boolean {
     const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CFO", "CMO"];
@@ -66,6 +85,15 @@ export class LeadService {
     } = {}
   ) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const orgId = user.employee.organizationId;
+    const filterKey = JSON.stringify(filters);
+    const cacheKey = `${orgId}:${user.id}:${filterKey}`;
+    const cached = leadQueryCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < LEAD_CACHE_TTL_MS) {
+      return cached.data;
+    }
 
     // Secure hierarchical scoping
     const scopedWhere = await buildCrmScopeFilter(user, {
@@ -158,13 +186,15 @@ export class LeadService {
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
-    return {
+    const result = {
       leads,
       total,
       page,
       limit,
       totalPages,
     };
+    leadQueryCache.set(cacheKey, { data: result, cachedAt: Date.now() });
+    return result;
   }
 
   /**
@@ -288,6 +318,7 @@ export class LeadService {
       }
     }
 
+    invalidateLeadCache(orgId);
     return lead;
   }
 
@@ -388,6 +419,7 @@ export class LeadService {
       metadata: { source: "lead_service" },
     });
 
+    invalidateLeadCache(user.employee.organizationId);
     return updated;
   }
 
@@ -420,6 +452,7 @@ export class LeadService {
       metadata: { source: "lead_service" },
     });
 
+    invalidateLeadCache(user.employee.organizationId);
     return { success: true, id: leadId };
   }
 

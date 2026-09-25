@@ -25,12 +25,14 @@ export async function GET(req: NextRequest) {
     const startDate = searchParams.get("startDate") || undefined;
     const endDate = searchParams.get("endDate") || undefined;
     const departmentId = searchParams.get("departmentId") || undefined;
+    const forceRefresh = searchParams.get("refresh") === "true";
 
     const data = await CeoDashboardService.getExecutiveDashboardData(user, {
       dateRange,
       startDate,
       endDate,
       departmentId,
+      forceRefresh,
     });
 
     return successResponse(data);

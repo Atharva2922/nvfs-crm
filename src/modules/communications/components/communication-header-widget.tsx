@@ -23,7 +23,10 @@ export function CommunicationHeaderWidget() {
 
   useEffect(() => {
     fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 15000);
+    const interval = setInterval(() => {
+      if (typeof document !== "undefined" && document.hidden) return;
+      fetchUnreadCount();
+    }, 45000);
     return () => clearInterval(interval);
   }, []);
 

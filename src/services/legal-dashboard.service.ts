@@ -1,13 +1,36 @@
 import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 
+interface CachedLegalDashboard {
+  data: any;
+  cachedAt: number;
+}
+const legalDashboardCache = new Map<string, CachedLegalDashboard>();
+const LEGAL_CACHE_TTL_MS = 45 * 1000;
+
+export function invalidateLegalDashboardCache(organizationId?: string) {
+  if (organizationId) {
+    legalDashboardCache.delete(organizationId);
+  } else {
+    legalDashboardCache.clear();
+  }
+}
+
 export class LegalDashboardService {
   /**
-   * Aggregates enterprise legal health metrics, telemetry, and live KPIs
+   * Aggregates enterprise legal health metrics, telemetry, and live KPIs with in-memory caching
    */
-  static async getExecutiveDashboard(user: AuthenticatedUser) {
+  static async getExecutiveDashboard(user: AuthenticatedUser, forceRefresh = false) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
     const orgId = user.employee.organizationId;
+
+    if (!forceRefresh) {
+      const cached = legalDashboardCache.get(orgId);
+      if (cached && Date.now() - cached.cachedAt < LEGAL_CACHE_TTL_MS) {
+        return cached.data;
+      }
+    }
+
     const now = new Date();
     const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
     const in7Days = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
@@ -161,7 +184,7 @@ export class LegalDashboardService {
       riskBreakdown[item.riskLevel] = item._count._all;
     });
 
-    return {
+    const result = {
       kpis: {
         activeContractsCount: activeContracts.length,
         totalActiveContractValue,
@@ -185,6 +208,9 @@ export class LegalDashboardService {
       upcomingDeadlines: upcomingDeadlines7d,
       recentActivities,
     };
+
+    legalDashboardCache.set(orgId, { data: result, cachedAt: Date.now() });
+    return result;
   }
 
   /**

@@ -35,12 +35,23 @@ export function QuickActionsWidget({ permissions = [], roleLevel = 10 }: QuickAc
       icon: Briefcase,
       color: "bg-orange-50 text-orange-700 dark:bg-orange-950/60 dark:text-orange-300 border-orange-200 dark:border-orange-800",
     },
-    {
-      title: "View My Payslips",
-      href: "/app/payroll/my-payslips",
-      icon: FileCheck,
-      color: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
-    },
+    ...(roleLevel >= 50 || permissions.includes("hr.employee.manage")
+      ? [
+          {
+            title: "Assign Jobs",
+            href: "/app/dashboard/hr",
+            icon: CheckSquare,
+            color: "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800",
+          },
+        ]
+      : [
+          {
+            title: "View My Payslips",
+            href: "/app/payroll/my-payslips",
+            icon: FileCheck,
+            color: "bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
+          },
+        ]),
   ];
 
   return (

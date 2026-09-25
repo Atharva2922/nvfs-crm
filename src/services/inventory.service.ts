@@ -43,6 +43,21 @@ export interface CreateAdjustmentInput {
   autoSubmit?: boolean;
 }
 
+interface CachedInventoryKpis {
+  data: any;
+  cachedAt: number;
+}
+const inventoryKpiCache = new Map<string, CachedInventoryKpis>();
+const INVENTORY_CACHE_TTL_MS = 45 * 1000;
+
+export function invalidateInventoryCache(organizationId?: string) {
+  if (organizationId) {
+    inventoryKpiCache.delete(organizationId);
+  } else {
+    inventoryKpiCache.clear();
+  }
+}
+
 export class InventoryService {
   static canViewCost(user: AuthenticatedUser): boolean {
     const privileged = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CFO", "ADMIN"];
@@ -51,12 +66,20 @@ export class InventoryService {
   }
 
   /**
-   * Comprehensive Inventory Overview KPIs & Distribution
+   * Comprehensive Inventory Overview KPIs & Distribution with in-memory caching
    */
-  static async getOverviewKpis(user: AuthenticatedUser) {
+  static async getOverviewKpis(user: AuthenticatedUser, forceRefresh = false) {
     if (!user.employee) throw new Error("User has no employee profile");
     const orgId = user.employee.organizationId;
     const canSeeCost = this.canViewCost(user);
+    const cacheKey = `${orgId}:${canSeeCost ? "withCost" : "noCost"}`;
+
+    if (!forceRefresh) {
+      const cached = inventoryKpiCache.get(cacheKey);
+      if (cached && Date.now() - cached.cachedAt < INVENTORY_CACHE_TTL_MS) {
+        return cached.data;
+      }
+    }
 
     const [products, servicesCount, inventoryItems, warehouses, categories] = await Promise.all([
       db.product.findMany({
@@ -168,7 +191,7 @@ export class InventoryService {
       };
     });
 
-    return {
+    const result = {
       totalProducts: products.length,
       totalServices: servicesCount,
       totalInventoryUnits,
@@ -180,6 +203,9 @@ export class InventoryService {
       warehouseDistribution,
       categoryDistribution,
     };
+
+    inventoryKpiCache.set(cacheKey, { data: result, cachedAt: Date.now() });
+    return result;
   }
 
   /**

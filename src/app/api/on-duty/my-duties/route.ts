@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
     const duties = await db.onDutyAssignment.findMany({
       where: {
         employeeId: user.employee.id,
-        organizationId: user.employee.organizationId,
+        organizationId: user.activeCompany?.id || user.employee.organizationId,
       },
       orderBy: { date: "desc" },
       include: {

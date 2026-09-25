@@ -1,51 +1,57 @@
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
-import { ApprovalService } from "@/services/approval.service";
-import { successResponse, errorResponse } from "@/lib/api-response";
-import { z } from "zod";
-
-const createApprovalSchema = z.object({
-  entityType: z.enum(["OPERATION", "PURCHASE_ORDER", "EXPENSE", "BUDGET_CHANGE", "OTHER"]).default("OPERATION"),
-  entityId: z.string().min(1, "Entity ID is required"),
-  operationId: z.string().optional(),
-  title: z.string().min(2, "Title is required"),
-  description: z.string().optional(),
-  metadata: z.any().optional(),
-});
+import { ApprovalEngineService } from "@/services/approval-engine.service";
+import { errorResponse, successResponse } from "@/lib/api-response";
 
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user) {
+      return errorResponse("Unauthenticated", "UNAUTHORIZED", 401);
+    }
 
     const { searchParams } = new URL(req.url);
     const status = searchParams.get("status") || undefined;
-    const entityType = searchParams.get("entityType") || undefined;
-    const operationId = searchParams.get("operationId") || undefined;
+    const type = searchParams.get("type") || undefined;
+    const mineOnly = searchParams.get("mine") === "true";
 
-    const approvals = await ApprovalService.list(user, { status, entityType, operationId });
+    const approvals = await ApprovalEngineService.list(user, {
+      status,
+      type,
+      mineOnly,
+    });
+
     return successResponse(approvals);
   } catch (error: any) {
-    console.error("[Approvals GET Error]:", error);
-    return errorResponse(error.message || "Failed to retrieve approvals", "INTERNAL_ERROR", 500);
+    console.error("[Approvals API GET Error]:", error);
+    return errorResponse(error.message || "Failed to fetch approvals", "INTERNAL_ERROR", 500);
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user) {
+      return errorResponse("Unauthenticated", "UNAUTHORIZED", 401);
+    }
 
     const body = await req.json();
-    const validated = createApprovalSchema.parse(body);
+    const { type, title, description, metadata } = body;
 
-    const approval = await ApprovalService.createRequest(user, validated);
-    return successResponse(approval, 201);
-  } catch (error: any) {
-    if (error instanceof z.ZodError) {
-      return errorResponse(error.issues[0]?.message || "Validation failed", "VALIDATION_ERROR", 400, error.issues);
+    if (!type || !title) {
+      return errorResponse("Type and Title are required", "VALIDATION_ERROR", 400);
     }
-    console.error("[Approvals POST Error]:", error);
-    return errorResponse(error.message || "Failed to create approval request", "INTERNAL_ERROR", 500);
+
+    const created = await ApprovalEngineService.initiateWorkflow(user, {
+      type,
+      title,
+      description,
+      metadata,
+    });
+
+    return successResponse(created);
+  } catch (error: any) {
+    console.error("[Approvals API POST Error]:", error);
+    return errorResponse(error.message || "Failed to initiate workflow", "INTERNAL_ERROR", 500);
   }
 }

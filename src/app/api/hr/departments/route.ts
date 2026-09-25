@@ -26,7 +26,17 @@ export async function GET(req: NextRequest) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 
-    const org = await db.organization.findFirst();
+    const { searchParams } = new URL(req.url);
+    const targetOrgId =
+      searchParams.get("organizationId") ||
+      req.headers.get("x-company-id") ||
+      user.activeCompany?.id ||
+      user.employee?.organizationId;
+
+    const org = targetOrgId
+      ? await db.organization.findUnique({ where: { id: targetOrgId } })
+      : await db.organization.findFirst();
+
     if (!org) {
       return errorResponse("No organization found", "INTERNAL_ERROR", 500);
     }

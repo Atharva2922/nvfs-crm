@@ -84,7 +84,7 @@ export class ExecutiveDashboardService {
 
   static isCtoAuthorized(user: AuthenticatedUser): boolean {
     if (user.roleLevel >= 90) return true;
-    if (["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CTO"].includes(user.roleCode)) return true;
+    if (["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CTO", "CIO"].includes(user.roleCode)) return true;
     return user.permissions?.includes("dashboard.cto.view") || false;
   }
 
@@ -98,6 +98,12 @@ export class ExecutiveDashboardService {
     if (user.roleLevel >= 90) return true;
     if (["SUPER_ADMIN", "CHAIRPERSON", "CEO", "CFO"].includes(user.roleCode)) return true;
     return user.permissions?.includes("dashboard.cfo.view") || false;
+  }
+
+  static isCooAuthorized(user: AuthenticatedUser): boolean {
+    if (user.roleLevel >= 90) return true;
+    if (["SUPER_ADMIN", "CHAIRPERSON", "CEO", "COO", "ADMIN"].includes(user.roleCode)) return true;
+    return user.permissions?.includes("dashboard.coo.view") || false;
   }
 
   // =========================================================================

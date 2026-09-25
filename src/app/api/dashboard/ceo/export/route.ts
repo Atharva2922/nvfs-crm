@@ -55,7 +55,7 @@ export async function GET(req: NextRequest) {
       rows.push('"Active Operations","Completed","Delayed Operations"');
       rows.push(`"${data.kpis.operations.active}","${data.kpis.operations.completed}","${data.kpis.operations.delayed}"`);
       rows.push('"Delayed Operation","Client","Owner","Progress","Due Date","Days Delayed","Risk"');
-      data.operationsOverview.delayedOperations.forEach((op) => {
+      data.operationsOverview.delayedOperations.forEach((op: any) => {
         rows.push(`"${op.name.replace(/"/g, '""')}","${op.clientName.replace(/"/g, '""')}","${op.ownerName}","${op.progress}%","${new Date(op.expectedCompletionDate).toLocaleDateString("en-IN")}","${op.daysDelayed} days","${op.riskLevel}"`);
       });
       rows.push("");
@@ -63,7 +63,7 @@ export async function GET(req: NextRequest) {
       // Section 4: Pending Approvals
       rows.push('"--- CEO PENDING APPROVALS ---"');
       rows.push('"Title","Category","Requester","Priority","Date"');
-      data.approvalCenter.items.forEach((app) => {
+      data.approvalCenter.items.forEach((app: any) => {
         rows.push(`"${app.title.replace(/"/g, '""')}","${app.entityType}","${app.requestedByName}","${app.priority}","${new Date(app.createdAt).toLocaleDateString("en-IN")}"`);
       });
 

@@ -73,6 +73,23 @@ export interface OverviewTelemetryData {
     activeCount: number;
     recentTrips: any[];
   };
+  employeesSummary: {
+    totalCount: number;
+    activeCount: number;
+    departmentsCount: number;
+    recentEmployees: Array<{
+      id: string;
+      employeeNumber: string;
+      firstName: string;
+      lastName: string;
+      email: string;
+      designation: string;
+      departmentName: string | null;
+      roleCode: string | null;
+      avatarUrl?: string | null;
+      employmentStatus: string;
+    }>;
+  };
 }
 
 interface CachedOverview {
@@ -81,7 +98,19 @@ interface CachedOverview {
 }
 
 const overviewCache = new Map<string, CachedOverview>();
-const OVERVIEW_CACHE_TTL_MS = 15 * 1000; // 15 seconds
+const OVERVIEW_CACHE_TTL_MS = 15 * 1000; // 15 seconds fresh TTL
+
+export function invalidateOverviewDashboardCache(organizationId?: string) {
+  if (organizationId) {
+    for (const key of overviewCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        overviewCache.delete(key);
+      }
+    }
+  } else {
+    overviewCache.clear();
+  }
+}
 
 export class OverviewDashboardService {
   static async getOverviewTelemetry(user: AuthenticatedUser): Promise<OverviewTelemetryData> {
@@ -90,11 +119,19 @@ export class OverviewDashboardService {
     }
 
     const empId = user.employee.id;
-    const orgId = user.employee.organizationId;
+    const orgId = user.activeCompany?.id || user.employee.organizationId;
+    const isExec =
+      user.roleLevel >= 70 ||
+      ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CFO", "CMO", "HR"].includes(
+        user.roleCode
+      );
+    const isVirtual = empId.startsWith("virtual_");
+
     const now = Date.now();
+    const cacheKey = `${orgId}:${empId}`;
 
     // Check memory cache
-    const cached = overviewCache.get(empId);
+    const cached = overviewCache.get(cacheKey);
     if (cached && now - cached.cachedAt < OVERVIEW_CACHE_TTL_MS) {
       return cached.data;
     }
@@ -104,6 +141,11 @@ export class OverviewDashboardService {
     const todayEnd = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate(), 23, 59, 59);
 
     // Parallelize all queries across tables in a single Promise.all
+    const taskWhereClause: any = { organizationId: orgId };
+    if (!isExec && !isVirtual) {
+      taskWhereClause.assigneeId = empId;
+    }
+
     const [
       todayAttendanceRecord,
       allTasks,
@@ -115,35 +157,40 @@ export class OverviewDashboardService {
       userExpenses,
       employeeRequests,
       onDutyAssignments,
+      companyEmployees,
+      totalEmployeesCount,
+      activeEmployeesCount,
+      departmentsCount,
     ] = await Promise.all([
       // 1. Today Attendance
-      db.attendanceRecord.findUnique({
-        where: {
-          employeeId_date: {
-            employeeId: empId,
-            date: todayStart,
-          },
-        },
-        select: {
-          id: true,
-          checkInTime: true,
-          checkOutTime: true,
-          status: true,
-          workMode: true,
-        },
-      }),
+      isVirtual
+        ? Promise.resolve(null)
+        : db.attendanceRecord.findUnique({
+            where: {
+              employeeId_date: {
+                employeeId: empId,
+                date: todayStart,
+              },
+            },
+            select: {
+              id: true,
+              checkInTime: true,
+              checkOutTime: true,
+              status: true,
+              workMode: true,
+            },
+          }),
 
-      // 2. All Tasks (Count metrics)
+      // 2. All Tasks (Count metrics strictly scoped to orgId)
       db.task.findMany({
-        where: { organizationId: orgId, assigneeId: empId },
+        where: taskWhereClause,
         select: { id: true, status: true, dueDate: true },
       }),
 
-      // 3. Recent Tasks
+      // 3. Recent Tasks (strictly scoped to orgId)
       db.task.findMany({
         where: {
-          organizationId: orgId,
-          assigneeId: empId,
+          ...taskWhereClause,
           status: { notIn: ["COMPLETED", "CANCELLED"] },
         },
         orderBy: [{ priority: "desc" }, { dueDate: "asc" }],
@@ -258,6 +305,34 @@ export class OverviewDashboardService {
           status: true,
         },
       }),
+
+      // 11. Company Employees Roster (strictly scoped to orgId)
+      db.employee.findMany({
+        where: { organizationId: orgId },
+        take: 8,
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          employeeNumber: true,
+          firstName: true,
+          lastName: true,
+          email: true,
+          designation: true,
+          avatarUrl: true,
+          employmentStatus: true,
+          department: { select: { name: true } },
+          user: { select: { role: { select: { code: true } } } },
+        },
+      }),
+
+      // 12. Total Employees Count
+      db.employee.count({ where: { organizationId: orgId } }),
+
+      // 13. Active Employees Count
+      db.employee.count({ where: { organizationId: orgId, employmentStatus: "ACTIVE" } }),
+
+      // 14. Departments Count
+      db.department.count({ where: { organizationId: orgId } }),
     ]);
 
     // Process Task Metrics
@@ -396,18 +471,31 @@ export class OverviewDashboardService {
           status: a.status,
         })),
       },
+      employeesSummary: {
+        totalCount: totalEmployeesCount,
+        activeCount: activeEmployeesCount,
+        departmentsCount,
+        recentEmployees: companyEmployees.map((e) => ({
+          id: e.id,
+          employeeNumber: e.employeeNumber,
+          firstName: e.firstName,
+          lastName: e.lastName,
+          email: e.email,
+          designation: e.designation,
+          departmentName: e.department?.name || null,
+          roleCode: e.user?.role?.code || null,
+          avatarUrl: e.avatarUrl,
+          employmentStatus: e.employmentStatus,
+        })),
+      },
     };
 
-    overviewCache.set(empId, { data: telemetry, cachedAt: now });
+    overviewCache.set(cacheKey, { data: telemetry, cachedAt: now });
     return telemetry;
   }
 
-  static invalidateOverviewCache(employeeId?: string) {
-    if (employeeId) {
-      overviewCache.delete(employeeId);
-    } else {
-      overviewCache.clear();
-    }
+  static invalidateOverviewCache(organizationId?: string) {
+    invalidateOverviewDashboardCache(organizationId);
   }
 
   private static getEmptyTelemetry(): OverviewTelemetryData {
@@ -421,6 +509,7 @@ export class OverviewDashboardService {
       expenses: { pendingCount: 0, pendingAmount: 0, approvedCount: 0, approvedAmount: 0 },
       requests: { pendingCount: 0, approvedCount: 0, recentRequests: [] },
       onDuty: { activeCount: 0, recentTrips: [] },
+      employeesSummary: { totalCount: 0, activeCount: 0, departmentsCount: 0, recentEmployees: [] },
     };
   }
 }

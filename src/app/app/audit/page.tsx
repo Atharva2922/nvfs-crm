@@ -10,7 +10,7 @@ import { formatDateTime } from "@/lib/utils";
 export const dynamic = "force-dynamic";
 
 export default async function AppAuditPage() {
-  const auditLogs = await AuditService.getLogs(50);
+  const auditLogs = await AuditService.getLogs({ limit: 50 });
 
   return (
     <div className="space-y-6">

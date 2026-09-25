@@ -9,6 +9,26 @@ export interface CeoDashboardFilters {
   startDate?: string;
   endDate?: string;
   departmentId?: string;
+  forceRefresh?: boolean;
+}
+
+interface CachedExecutiveDashboard {
+  data: any;
+  cachedAt: number;
+}
+const executiveDashboardCache = new Map<string, CachedExecutiveDashboard>();
+const CEO_DASHBOARD_CACHE_TTL_MS = 45 * 1000; // 45 seconds fresh TTL
+
+export function invalidateCeoDashboardCache(organizationId?: string) {
+  if (organizationId) {
+    for (const key of executiveDashboardCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        executiveDashboardCache.delete(key);
+      }
+    }
+  } else {
+    executiveDashboardCache.clear();
+  }
 }
 
 export class CeoDashboardService {
@@ -74,26 +94,64 @@ export class CeoDashboardService {
       throw new Error("UNAUTHORIZED: Access restricted to executive leadership (CEO/Chairperson/Super Admin)");
     }
 
-    if (!user.employee) {
+    const orgId = user.activeCompany?.id || user.employee?.organizationId;
+    if (!orgId) {
       throw new Error("User has no associated enterprise organization profile");
     }
-
-    const orgId = user.employee.organizationId;
     const now = new Date();
     const { currentStart, currentEnd, prevStart, prevEnd } = this.calculateDateWindows(filters);
 
-    // ==========================================
-    // 1. FINANCIAL PERFORMANCE & REVENUE METRICS
-    // ==========================================
+    // Fast in-memory telemetry cache check
+    const cacheKey = `${orgId}:${filters.dateRange || "THIS_MONTH"}:${filters.startDate || ""}:${filters.endDate || ""}:${filters.departmentId || ""}`;
+    if (!filters.forceRefresh) {
+      const cached = executiveDashboardCache.get(cacheKey);
+      if (cached && now.getTime() - cached.cachedAt < CEO_DASHBOARD_CACHE_TTL_MS) {
+        return cached.data;
+      }
+    }
+
+    // =========================================================================
+    // HIGH CONCURRENCY EXECUTION: ALL DATASETS LOADED IN PARALLEL
+    // =========================================================================
     const [
+      // 1. Finance
       financeOverview,
       currInvoices,
       prevInvoices,
       currExpenses,
       prevExpenses,
       openReceivables,
+      // 2. CRM & Sales
+      allDeals,
+      allClients,
+      allLeads,
+      // 3. Operations & Projects
+      operations,
+      opIssues,
+      // 4. Department Performance
+      departments,
+      // 5. Workforce & HR
+      employees,
+      // 6. Inventory & Procurement
+      inventoryKpis,
+      purchaseOrders,
+      vendors,
+      // 7. Legal & Compliance
+      legalDashboard,
+      expiringContractsList,
+      activeCasesList,
+      criticalComplianceList,
+      // 8. CEO Approvals
+      pendingApprovals,
+      // 9. Activity Timeline
+      recentAuditLogs,
+      // 10. Upcoming Corporate Events
+      upcomingCalendarEvents,
+      upcomingContractDeadlines,
+      upcomingComplianceDeadlines,
     ] = await Promise.all([
-      FinanceService.getOverview(user).catch((err) => {
+      // 1. Finance
+      FinanceService.getOverview(user, filters.forceRefresh).catch((err) => {
         console.error("[CEO Dashboard] Finance overview aggregation error:", err);
         return null;
       }),
@@ -137,8 +195,178 @@ export class CeoDashboardService {
         },
         select: { id: true, invoiceNumber: true, balance: true, dueDate: true, client: { select: { id: true, name: true } } },
       }),
+      // 2. CRM & Sales
+      db.opportunity.findMany({
+        where: { organizationId: orgId },
+        include: { client: { select: { id: true, name: true } } },
+      }),
+      db.client.findMany({
+        where: { organizationId: orgId },
+        include: {
+          opportunities: { select: { id: true, value: true, stage: true } },
+          operations: { select: { id: true, status: true, progress: true } },
+          operationIssues: { where: { status: { notIn: ["RESOLVED", "CLOSED"] } }, select: { id: true, severity: true } },
+          invoices: { where: { status: { not: "CANCELLED" } }, select: { total: true, balance: true } },
+          legalContracts: { where: { status: "ACTIVE" }, select: { id: true, status: true, expiryDate: true } },
+        },
+      }),
+      db.lead.findMany({
+        where: { organizationId: orgId },
+        select: { id: true, status: true, estimatedValue: true, createdAt: true },
+      }),
+      // 3. Operations & Projects
+      db.operation.findMany({
+        where: { organizationId: orgId },
+        include: {
+          client: { select: { id: true, name: true } },
+          owner: { select: { id: true, firstName: true, lastName: true } },
+          department: { select: { id: true, name: true } },
+          tasks: { select: { id: true, status: true } },
+        },
+      }),
+      db.operationIssue.findMany({
+        where: { organizationId: orgId, status: { notIn: ["RESOLVED", "CLOSED"] } },
+        include: {
+          operation: { select: { id: true, name: true, operationCode: true } },
+          reportedBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      // 4. Department Performance
+      db.department.findMany({
+        where: { organizationId: orgId },
+        include: {
+          employees: { select: { id: true, employmentStatus: true } },
+          tasks: { select: { id: true, status: true } },
+          operations: { select: { id: true, status: true, approvedBudget: true, actualCost: true } },
+        },
+      }),
+      // 5. Workforce & HR
+      db.employee.findMany({
+        where: { organizationId: orgId },
+        select: {
+          id: true,
+          employmentStatus: true,
+          hireDate: true,
+          departmentId: true,
+          department: { select: { name: true } },
+          operationAssignments: { select: { id: true } },
+          assignedTasks: { where: { status: { not: "COMPLETED" } }, select: { id: true } },
+        },
+      }),
+      // 6. Inventory & Procurement
+      InventoryService.getOverviewKpis(user, filters.forceRefresh).catch((err) => {
+        console.error("[CEO Dashboard] Inventory KPIs aggregation error:", err);
+        return null;
+      }),
+      db.purchaseOrder.findMany({
+        where: { organizationId: orgId },
+        include: {
+          vendor: { select: { id: true, displayName: true } },
+        },
+      }),
+      db.vendor.findMany({
+        where: { organizationId: orgId, status: "ACTIVE" },
+        select: { id: true, displayName: true },
+      }),
+      // 7. Legal & Compliance
+      LegalDashboardService.getExecutiveDashboard(user, filters.forceRefresh).catch((err) => {
+        console.error("[CEO Dashboard] Legal dashboard aggregation error:", err);
+        return null;
+      }),
+      db.legalContract.findMany({
+        where: {
+          organizationId: orgId,
+          status: { in: ["ACTIVE", "EXPIRING_SOON"] },
+          expiryDate: { gte: now, lte: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000) },
+        },
+        select: { id: true, contractNumber: true, title: true, contractValue: true, expiryDate: true, status: true, legalOwner: { select: { firstName: true, lastName: true } } },
+        take: 5,
+        orderBy: { expiryDate: "asc" },
+      }),
+      db.legalCase.findMany({
+        where: {
+          organizationId: orgId,
+          status: { in: ["OPEN", "IN_PROGRESS", "TRIAL", "APPEAL"] },
+        },
+        select: { id: true, caseNumber: true, title: true, estimatedFinancialExposure: true, priority: true, status: true },
+        take: 5,
+        orderBy: { estimatedFinancialExposure: "desc" },
+      }),
+      db.legalCompliance.findMany({
+        where: {
+          organizationId: orgId,
+          OR: [{ status: "NON_COMPLIANT" }, { nextDueDate: { lte: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000) } }],
+        },
+        select: { id: true, title: true, regulation: true, riskLevel: true, status: true, nextDueDate: true },
+        take: 5,
+        orderBy: { nextDueDate: "asc" },
+      }),
+      // 8. CEO Approvals
+      db.approvalRequest.findMany({
+        where: {
+          organizationId: orgId,
+          status: "PENDING",
+        },
+        include: {
+          requestedBy: { select: { id: true, firstName: true, lastName: true, designation: true } },
+          operation: { select: { id: true, name: true, operationCode: true } },
+          contract: { select: { id: true, title: true, contractNumber: true } },
+        },
+        orderBy: { createdAt: "desc" },
+      }),
+      // 9. Activity Timeline
+      db.auditLog.findMany({
+        where: {
+          actor: {
+            employee: {
+              organizationId: orgId,
+            },
+          },
+        },
+        take: 10,
+        orderBy: { createdAt: "desc" },
+        include: {
+          actor: {
+            select: {
+              email: true,
+              role: { select: { name: true } },
+              employee: { select: { firstName: true, lastName: true } },
+            },
+          },
+        },
+      }),
+      // 10. Upcoming Corporate Events & Deadlines
+      db.calendarEvent.findMany({
+        where: {
+          organizationId: orgId,
+          startDate: { gte: now, lte: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000) },
+        },
+        take: 5,
+        orderBy: { startDate: "asc" },
+      }),
+      db.legalContract.findMany({
+        where: {
+          organizationId: orgId,
+          expiryDate: { gte: now, lte: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
+        },
+        select: { id: true, title: true, expiryDate: true },
+        take: 5,
+        orderBy: { expiryDate: "asc" },
+      }),
+      db.legalCompliance.findMany({
+        where: {
+          organizationId: orgId,
+          nextDueDate: { gte: now, lte: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
+        },
+        select: { id: true, title: true, nextDueDate: true },
+        take: 5,
+        orderBy: { nextDueDate: "asc" },
+      }),
     ]);
 
+    // ==========================================
+    // 1. FINANCIAL PERFORMANCE & REVENUE METRICS
+    // ==========================================
     const currentRevenue = currInvoices.reduce((acc, inv) => acc + (inv.paidAmount || inv.total), 0);
     const previousRevenue = prevInvoices.reduce((acc, inv) => acc + (inv.paidAmount || inv.total), 0);
     const revenueChange = previousRevenue > 0 ? Math.round(((currentRevenue - previousRevenue) / previousRevenue) * 100) : 0;
@@ -160,27 +388,6 @@ export class CeoDashboardService {
     // ==========================================
     // 2. CRM & SALES PIPELINE METRICS
     // ==========================================
-    const [allDeals, allClients, allLeads] = await Promise.all([
-      db.opportunity.findMany({
-        where: { organizationId: orgId },
-        include: { client: { select: { id: true, name: true } } },
-      }),
-      db.client.findMany({
-        where: { organizationId: orgId },
-        include: {
-          opportunities: { select: { id: true, value: true, stage: true } },
-          operations: { select: { id: true, status: true, progress: true } },
-          operationIssues: { where: { status: { notIn: ["RESOLVED", "CLOSED"] } }, select: { id: true, severity: true } },
-          invoices: { where: { status: { not: "CANCELLED" } }, select: { total: true, balance: true } },
-          legalContracts: { where: { status: "ACTIVE" }, select: { id: true, status: true, expiryDate: true } },
-        },
-      }),
-      db.lead.findMany({
-        where: { organizationId: orgId },
-        select: { id: true, status: true, estimatedValue: true, createdAt: true },
-      }),
-    ]);
-
     const newLeadsCount = allLeads.filter((l) => new Date(l.createdAt) >= currentStart && new Date(l.createdAt) <= currentEnd).length;
     let wonDealsCount = 0;
     let wonDealsValue = 0;
@@ -262,25 +469,6 @@ export class CeoDashboardService {
     // ==========================================
     // 4. OPERATIONS & PROJECTS OVERVIEW
     // ==========================================
-    const [operations, opIssues] = await Promise.all([
-      db.operation.findMany({
-        where: { organizationId: orgId },
-        include: {
-          client: { select: { id: true, name: true } },
-          owner: { select: { id: true, firstName: true, lastName: true } },
-          department: { select: { id: true, name: true } },
-          tasks: { select: { id: true, status: true } },
-        },
-      }),
-      db.operationIssue.findMany({
-        where: { organizationId: orgId, status: { notIn: ["RESOLVED", "CLOSED"] } },
-        include: {
-          operation: { select: { id: true, name: true, operationCode: true } },
-          reportedBy: { select: { firstName: true, lastName: true } },
-        },
-      }),
-    ]);
-
     const activeOperations = operations.filter((o) => !["COMPLETED", "CANCELLED"].includes(o.status));
     const completedOperations = operations.filter((o) => o.status === "COMPLETED");
     const delayedOperationsList = operations
@@ -317,15 +505,6 @@ export class CeoDashboardService {
     // ==========================================
     // 5. DEPARTMENT PERFORMANCE BREAKDOWN
     // ==========================================
-    const departments = await db.department.findMany({
-      where: { organizationId: orgId },
-      include: {
-        employees: { select: { id: true, employmentStatus: true } },
-        tasks: { select: { id: true, status: true } },
-        operations: { select: { id: true, status: true, approvedBudget: true, actualCost: true } },
-      },
-    });
-
     const departmentOverview = departments.map((d) => {
       const activeEmps = d.employees.filter((e) => e.employmentStatus === "ACTIVE").length;
       const activeTasks = d.tasks.filter((t) => t.status !== "COMPLETED").length;
@@ -352,19 +531,6 @@ export class CeoDashboardService {
     // ==========================================
     // 6. WORKFORCE & HR HIGH-LEVEL OVERVIEW
     // ==========================================
-    const employees = await db.employee.findMany({
-      where: { organizationId: orgId },
-      select: {
-        id: true,
-        employmentStatus: true,
-        hireDate: true,
-        departmentId: true,
-        department: { select: { name: true } },
-        operationAssignments: { select: { id: true } },
-        assignedTasks: { where: { status: { not: "COMPLETED" } }, select: { id: true } },
-      },
-    });
-
     const totalEmployees = employees.length;
     const activeEmployees = employees.filter((e) => e.employmentStatus === "ACTIVE").length;
     const ninetyDaysAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
@@ -375,23 +541,6 @@ export class CeoDashboardService {
     // ==========================================
     // 7. INVENTORY & PROCUREMENT OVERVIEW
     // ==========================================
-    const [inventoryKpis, purchaseOrders, vendors] = await Promise.all([
-      InventoryService.getOverviewKpis(user).catch((err) => {
-        console.error("[CEO Dashboard] Inventory KPIs aggregation error:", err);
-        return null;
-      }),
-      db.purchaseOrder.findMany({
-        where: { organizationId: orgId },
-        include: {
-          vendor: { select: { id: true, displayName: true } },
-        },
-      }),
-      db.vendor.findMany({
-        where: { organizationId: orgId, status: "ACTIVE" },
-        select: { id: true, displayName: true },
-      }),
-    ]);
-
     const pendingPOs = purchaseOrders.filter((po) => ["PENDING_APPROVAL", "APPROVED", "SENT"].includes(po.status));
     const delayedPOs = purchaseOrders.filter(
       (po) => !["RECEIVED", "CLOSED", "CANCELLED"].includes(po.status) && new Date(po.expectedDeliveryDate) < now
@@ -420,58 +569,11 @@ export class CeoDashboardService {
     // ==========================================
     // 8. LEGAL & COMPLIANCE ATTENTION
     // ==========================================
-    const legalDashboard = await LegalDashboardService.getExecutiveDashboard(user).catch((err) => {
-      console.error("[CEO Dashboard] Legal dashboard aggregation error:", err);
-      return null;
-    });
-
-    const [expiringContractsList, activeCasesList, criticalComplianceList] = await Promise.all([
-      db.legalContract.findMany({
-        where: {
-          organizationId: orgId,
-          status: { in: ["ACTIVE", "EXPIRING_SOON"] },
-          expiryDate: { gte: now, lte: new Date(now.getTime() + 45 * 24 * 60 * 60 * 1000) },
-        },
-        select: { id: true, contractNumber: true, title: true, contractValue: true, expiryDate: true, status: true, legalOwner: { select: { firstName: true, lastName: true } } },
-        take: 5,
-        orderBy: { expiryDate: "asc" },
-      }),
-      db.legalCase.findMany({
-        where: {
-          organizationId: orgId,
-          status: { in: ["OPEN", "IN_PROGRESS", "TRIAL", "APPEAL"] },
-        },
-        select: { id: true, caseNumber: true, title: true, estimatedFinancialExposure: true, priority: true, status: true },
-        take: 5,
-        orderBy: { estimatedFinancialExposure: "desc" },
-      }),
-      db.legalCompliance.findMany({
-        where: {
-          organizationId: orgId,
-          OR: [{ status: "NON_COMPLIANT" }, { nextDueDate: { lte: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000) } }],
-        },
-        select: { id: true, title: true, regulation: true, riskLevel: true, status: true, nextDueDate: true },
-        take: 5,
-        orderBy: { nextDueDate: "asc" },
-      }),
-    ]);
+    // (Aggregated in parallel master fetch)
 
     // ==========================================
     // 9. CEO APPROVAL CENTER
     // ==========================================
-    const pendingApprovals = await db.approvalRequest.findMany({
-      where: {
-        organizationId: orgId,
-        status: "PENDING",
-      },
-      include: {
-        requestedBy: { select: { id: true, firstName: true, lastName: true, designation: true } },
-        operation: { select: { id: true, name: true, operationCode: true } },
-        contract: { select: { id: true, title: true, contractNumber: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    });
-
     const approvalItems = pendingApprovals.map((app) => {
       let parsedMeta: any = {};
       try {
@@ -588,27 +690,6 @@ export class CeoDashboardService {
     // ==========================================
     // 11. COMPANY ACTIVITY TIMELINE
     // ==========================================
-    const recentAuditLogs = await db.auditLog.findMany({
-      where: {
-        actor: {
-          employee: {
-            organizationId: orgId,
-          },
-        },
-      },
-      take: 10,
-      orderBy: { createdAt: "desc" },
-      include: {
-        actor: {
-          select: {
-            email: true,
-            role: { select: { name: true } },
-            employee: { select: { firstName: true, lastName: true } },
-          },
-        },
-      },
-    });
-
     const activityTimeline = recentAuditLogs.map((log) => {
       const actorName = log.actor?.employee
         ? `${log.actor.employee.firstName} ${log.actor.employee.lastName}`
@@ -628,35 +709,6 @@ export class CeoDashboardService {
     // ==========================================
     // 12. UPCOMING CORPORATE EVENTS & DEADLINES
     // ==========================================
-    const [upcomingCalendarEvents, upcomingContractDeadlines, upcomingComplianceDeadlines] = await Promise.all([
-      db.calendarEvent.findMany({
-        where: {
-          organizationId: orgId,
-          startDate: { gte: now, lte: new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000) },
-        },
-        take: 5,
-        orderBy: { startDate: "asc" },
-      }),
-      db.legalContract.findMany({
-        where: {
-          organizationId: orgId,
-          expiryDate: { gte: now, lte: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
-        },
-        select: { id: true, title: true, expiryDate: true },
-        take: 5,
-        orderBy: { expiryDate: "asc" },
-      }),
-      db.legalCompliance.findMany({
-        where: {
-          organizationId: orgId,
-          nextDueDate: { gte: now, lte: new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000) },
-        },
-        select: { id: true, title: true, nextDueDate: true },
-        take: 5,
-        orderBy: { nextDueDate: "asc" },
-      }),
-    ]);
-
     const upcomingEvents: Array<{
       id: string;
       title: string;
@@ -699,8 +751,8 @@ export class CeoDashboardService {
 
     upcomingEvents.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
 
-    return {
-      organizationName: user.employee.organizationName || "Enterprise Group",
+    const result = {
+      organizationName: user.activeCompany?.name || user.employee?.organizationName || "Enterprise Group",
       asOf: now.toISOString(),
       filters: {
         dateRange: filters.dateRange || "THIS_MONTH",
@@ -803,5 +855,8 @@ export class CeoDashboardService {
       activityTimeline,
       upcomingEvents,
     };
+
+    executiveDashboardCache.set(cacheKey, { data: result, cachedAt: Date.now() });
+    return result;
   }
 }
