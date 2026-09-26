@@ -223,7 +223,7 @@ export class LeaveService {
     }
 
     // 6. Create request in transaction & update balance
-    return await db.$transaction(async (tx) => {
+    const createdRequest = await db.$transaction(async (tx) => {
       const request = await tx.leaveRequest.create({
         data: {
           employeeId,
@@ -257,12 +257,12 @@ export class LeaveService {
     }, { timeout: 45000, maxWait: 20000 });
 
     AuditService.logMutation({
-      actorId: request.employee.userId || undefined,
+      actorId: createdRequest.employee.userId || undefined,
       action: "LEAVE_REQUEST_CREATED",
       entity: "LeaveRequest",
-      entityId: request.id,
+      entityId: createdRequest.id,
       newValue: {
-        employeeNumber: request.employee.employeeNumber,
+        employeeNumber: createdRequest.employee.employeeNumber,
         policy: policy.code,
         daysCount,
         startDate: start.toISOString(),
@@ -272,20 +272,20 @@ export class LeaveService {
     }).catch((err) => console.error("[AuditService Warning]:", err));
 
     // Notify manager via EventBus if employee has a manager
-    if (request.employee.manager?.userId) {
+    if (createdRequest.employee.manager?.userId) {
       EventBusService.publish({
         type: "LEAVE_REQUEST",
-        organizationId: request.employee.organizationId,
-        actorId: request.employee.userId || undefined,
-        targetUserIds: [request.employee.manager.userId],
-        title: `Leave Request: ${request.employee.firstName} ${request.employee.lastName}`,
-        message: `${request.employee.firstName} applied for ${request.daysCount} day(s) of ${request.leavePolicy.code}.`,
+        organizationId: createdRequest.employee.organizationId,
+        actorId: createdRequest.employee.userId || undefined,
+        targetUserIds: [createdRequest.employee.manager.userId],
+        title: `Leave Request: ${createdRequest.employee.firstName} ${createdRequest.employee.lastName}`,
+        message: `${createdRequest.employee.firstName} applied for ${createdRequest.daysCount} day(s) of ${createdRequest.leavePolicy.code}.`,
         actionUrl: "/app/hr/leaves",
-        metadata: { leaveRequestId: request.id },
+        metadata: { leaveRequestId: createdRequest.id },
       }).catch((err) => console.error("[EventBusService Warning]:", err));
     }
 
-    return request;
+    return createdRequest;
   }
 
   /**
@@ -431,8 +431,8 @@ export class LeaveService {
 
     const currentYear = request.startDate.getFullYear();
 
-    return await db.$transaction(async (tx) => {
-      const updated = await tx.leaveRequest.update({
+    const updated = await db.$transaction(async (tx) => {
+      const res = await tx.leaveRequest.update({
         where: { id: requestId },
         data: {
           status: "REJECTED",
@@ -464,7 +464,7 @@ export class LeaveService {
         });
       }
 
-        return updated;
+        return res;
       },
       { timeout: 45000, maxWait: 20000 }
     );
