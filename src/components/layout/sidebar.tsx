@@ -14,6 +14,7 @@ import {
   Scale,
   BarChart3,
   Calendar,
+  CalendarCheck,
   Bell,
   MessageSquare,
   CheckSquare,
@@ -294,13 +295,25 @@ export function Sidebar() {
   // ========================================================
   // 7. MY WORKSPACE (Universal Personal Portal)
   // ========================================================
+  const isExecutiveOrAdmin =
+    isSuperAdmin ||
+    isExecutive ||
+    role === "SUPER_ADMIN" ||
+    role === "ADMIN" ||
+    role === "CEO" ||
+    role === "CHAIRPERSON";
+
   navGroups.push({
     groupName: "MY WORKSPACE",
     items: [
       { title: "Workspace Overview", href: "/app/overview", icon: LayoutDashboard },
       { title: "My Tasks", href: "/app/tasks", icon: CheckSquare },
       { title: "My Attendance", href: "/app/hr/attendance", icon: Clock },
-      { title: "My Leave", href: "/app/hr/leaves", icon: Calendar },
+      {
+        title: isExecutiveOrAdmin ? "Leave Management" : "My Leave",
+        href: "/app/hr/leaves",
+        icon: isExecutiveOrAdmin ? CalendarCheck : Calendar,
+      },
       { title: "My Salary & Payslips", href: "/app/payroll/my-payslips", icon: FileCheck },
       { title: "My Documents", href: "/app/documents", icon: FileText },
       { title: "Request Center", href: "/app/requests", icon: FileText },
@@ -320,6 +333,7 @@ export function Sidebar() {
     return navGroups;
   }, [
     isSuperAdmin,
+    isExecutive,
     role,
     roleLevel,
     deptCode,

@@ -73,18 +73,31 @@ interface LeaveRequestItem {
 
 export default function LeavesPage() {
   const { user: currentUser, role, roleLevel, isSuperAdmin, isExecutive } = useAuth();
-  const [activeTab, setActiveTab] = useState<"my" | "team" | "policies" | "management">("my");
 
-  // Determine if current user has executive or HR leave governance privileges
-  const isCeoOrHrOrAdmin =
+  // Determine executive leadership (Super Admin, Admin, CEO, Chairperson)
+  const isExecutiveLeadership =
     isSuperAdmin ||
-    isExecutive ||
     role === "SUPER_ADMIN" ||
     role === "ADMIN" ||
     role === "CEO" ||
-    role === "CHAIRPERSON" ||
+    role === "CHAIRPERSON";
+
+  // Determine if current user has executive or HR leave governance privileges
+  const isCeoOrHrOrAdmin =
+    isExecutiveLeadership ||
+    isExecutive ||
     role === "HR" ||
     (roleLevel ?? 0) >= 70;
+
+  const [activeTab, setActiveTab] = useState<"my" | "team" | "policies" | "management">(
+    isExecutiveLeadership ? "management" : "my"
+  );
+
+  useEffect(() => {
+    if (isExecutiveLeadership) {
+      setActiveTab("management");
+    }
+  }, [isExecutiveLeadership]);
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [myRequests, setMyRequests] = useState<LeaveRequestItem[]>([]);
   const [teamRequests, setTeamRequests] = useState<LeaveRequestItem[]>([]);
@@ -267,26 +280,23 @@ export default function LeavesPage() {
         description="Statutory & custom leave policies, balance tracking, automated non-working day exclusions, and supervisor authorization workflows."
         actions={
           <div className="flex items-center gap-2">
-            {isCeoOrHrOrAdmin && (
+            {isExecutiveLeadership ? (
+              <Badge variant="warning" className="px-3 py-1.5 text-xs font-semibold gap-1.5 bg-amber-500/10 border-amber-500/30 text-amber-300">
+                <ShieldCheck className="h-4 w-4 text-amber-400" />
+                Executive Authority Mode
+              </Badge>
+            ) : (
               <Button
-                variant="outline"
-                onClick={() => setActiveTab("management")}
-                className="border-amber-500/40 text-amber-300 hover:bg-amber-950/30 gap-1.5 shadow-sm text-xs"
+                onClick={() => {
+                  setApplyError(null);
+                  setIsApplyOpen(true);
+                }}
+                className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm text-xs"
               >
-                <Sliders className="h-3.5 w-3.5 text-amber-400" />
-                CEO & HR Controls
+                <PlusCircle className="h-4 w-4" />
+                Apply for Leave
               </Button>
             )}
-            <Button
-              onClick={() => {
-                setApplyError(null);
-                setIsApplyOpen(true);
-              }}
-              className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm text-xs"
-            >
-              <PlusCircle className="h-4 w-4" />
-              Apply for Leave
-            </Button>
           </div>
         }
       />
@@ -295,62 +305,124 @@ export default function LeavesPage() {
 
       {/* Navigation Subtabs */}
       <div className="flex border-b border-slate-800 space-x-6 text-sm font-medium">
-        <button
-          onClick={() => setActiveTab("my")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "my"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <CalendarDays className="h-4 w-4" />
-          My Leaves & Balances
-        </button>
+        {isExecutiveLeadership ? (
+          <>
+            <button
+              onClick={() => setActiveTab("management")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "management"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Sliders className="h-4 w-4 text-amber-400" />
+              Executive Leave Management
+              <span className="ml-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-bold px-1.5 py-0.5">
+                EXECUTIVE
+              </span>
+            </button>
 
-        <button
-          onClick={() => setActiveTab("team")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "team"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Users className="h-4 w-4" />
-          Team Approvals
-          {teamRequests.filter((r) => r.status === "PENDING").length > 0 && (
-            <span className="ml-1.5 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.2 text-[11px] font-mono border border-amber-500/30">
-              {teamRequests.filter((r) => r.status === "PENDING").length}
-            </span>
-          )}
-        </button>
+            <button
+              onClick={() => setActiveTab("team")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "team"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Direct Approvals
+              {teamRequests.filter((r) => r.status === "PENDING").length > 0 && (
+                <span className="ml-1.5 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.2 text-[11px] font-mono border border-amber-500/30">
+                  {teamRequests.filter((r) => r.status === "PENDING").length}
+                </span>
+              )}
+            </button>
 
-        <button
-          onClick={() => setActiveTab("policies")}
-          className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-            activeTab === "policies"
-              ? "border-blue-500 text-blue-400 font-semibold"
-              : "border-transparent text-slate-400 hover:text-slate-200"
-          }`}
-        >
-          <Layers className="h-4 w-4" />
-          Company Leave Policies
-        </button>
+            <button
+              onClick={() => setActiveTab("policies")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "policies"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Layers className="h-4 w-4" />
+              Enterprise Policies
+            </button>
 
-        {isCeoOrHrOrAdmin && (
-          <button
-            onClick={() => setActiveTab("management")}
-            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
-              activeTab === "management"
-                ? "border-blue-500 text-blue-400 font-semibold"
-                : "border-transparent text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            <Sliders className="h-4 w-4 text-amber-400" />
-            CEO / HR Leave Management
-            <span className="ml-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-bold px-1.5 py-0.5">
-              EXECUTIVE
-            </span>
-          </button>
+            <button
+              onClick={() => setActiveTab("my")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "my"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <CalendarDays className="h-4 w-4" />
+              Personal Records
+            </button>
+          </>
+        ) : (
+          <>
+            <button
+              onClick={() => setActiveTab("my")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "my"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <CalendarDays className="h-4 w-4" />
+              My Leaves & Balances
+            </button>
+
+            <button
+              onClick={() => setActiveTab("team")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "team"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Users className="h-4 w-4" />
+              Team Approvals
+              {teamRequests.filter((r) => r.status === "PENDING").length > 0 && (
+                <span className="ml-1.5 rounded-full bg-amber-500/20 text-amber-400 px-2 py-0.2 text-[11px] font-mono border border-amber-500/30">
+                  {teamRequests.filter((r) => r.status === "PENDING").length}
+                </span>
+              )}
+            </button>
+
+            <button
+              onClick={() => setActiveTab("policies")}
+              className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                activeTab === "policies"
+                  ? "border-blue-500 text-blue-400 font-semibold"
+                  : "border-transparent text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              <Layers className="h-4 w-4" />
+              Company Leave Policies
+            </button>
+
+            {isCeoOrHrOrAdmin && (
+              <button
+                onClick={() => setActiveTab("management")}
+                className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+                  activeTab === "management"
+                    ? "border-blue-500 text-blue-400 font-semibold"
+                    : "border-transparent text-slate-400 hover:text-slate-200"
+                }`}
+              >
+                <Sliders className="h-4 w-4 text-amber-400" />
+                HR Leave Management
+                <span className="ml-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-bold px-1.5 py-0.5">
+                  HR
+                </span>
+              </button>
+            )}
+          </>
         )}
       </div>
 

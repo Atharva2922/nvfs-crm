@@ -2,7 +2,8 @@
 
 import React from "react";
 import Link from "next/link";
-import { Calendar, IndianRupee, FileText, Briefcase, FileCheck, CheckSquare, PlusCircle } from "lucide-react";
+import { Calendar, CalendarCheck, IndianRupee, FileText, Briefcase, FileCheck, CheckSquare, PlusCircle } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface QuickActionsWidgetProps {
   permissions?: string[];
@@ -10,12 +11,23 @@ interface QuickActionsWidgetProps {
 }
 
 export function QuickActionsWidget({ permissions = [], roleLevel = 10 }: QuickActionsWidgetProps) {
+  const { role, isSuperAdmin, isExecutive } = useAuth();
+  const isExecutiveOrAdmin =
+    isSuperAdmin ||
+    isExecutive ||
+    role === "SUPER_ADMIN" ||
+    role === "ADMIN" ||
+    role === "CEO" ||
+    role === "CHAIRPERSON";
+
   const actions = [
     {
-      title: "Apply Leave",
+      title: isExecutiveOrAdmin ? "Leave Management" : "Apply Leave",
       href: "/app/hr/leaves",
-      icon: Calendar,
-      color: "bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200 dark:border-teal-800",
+      icon: isExecutiveOrAdmin ? CalendarCheck : Calendar,
+      color: isExecutiveOrAdmin
+        ? "bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800"
+        : "bg-teal-50 text-teal-700 dark:bg-teal-950/60 dark:text-teal-300 border-teal-200 dark:border-teal-800",
     },
     {
       title: "Submit Expense",
