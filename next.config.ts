@@ -5,6 +5,15 @@ const nextConfig: NextConfig = {
   experimental: {
     optimizePackageImports: ["lucide-react", "@tanstack/react-table", "clsx", "tailwind-merge"],
   },
+  async redirects() {
+    return [
+      {
+        source: "/app/hr/leave",
+        destination: "/app/hr/leaves",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

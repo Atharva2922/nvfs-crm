@@ -151,9 +151,10 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Aut
     // Determine memberships
     let membershipSummaries: UserCompanyMembershipSummary[] = [];
 
+    let allOrgs: any[] | null = null;
     if (isSuperAdmin) {
       // Super Admin has access to all platform companies
-      const allOrgs = await db.organization.findMany({
+      allOrgs = await db.organization.findMany({
         where: { status: { not: "ARCHIVED" } },
         orderBy: { name: "asc" },
       });
@@ -217,12 +218,20 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Aut
       activeCompanyId = primary?.companyId || membershipSummaries[0]?.companyId || user.employee?.organizationId || null;
     }
 
-    // Load active organization details
+    // Load active organization details (reuse in-memory org if already loaded to eliminate redundant query)
     let activeCompanySummary: CompanySummary | null = null;
     if (activeCompanyId) {
-      const orgRecord = await db.organization.findUnique({
-        where: { id: activeCompanyId },
-      });
+      let orgRecord: any =
+        allOrgs?.find((o) => o.id === activeCompanyId) ||
+        user.memberships.find((m) => m.organization?.id === activeCompanyId)?.organization ||
+        (user.employee?.organization?.id === activeCompanyId ? user.employee.organization : null);
+
+      if (!orgRecord) {
+        orgRecord = await db.organization.findUnique({
+          where: { id: activeCompanyId },
+        });
+      }
+
       if (orgRecord) {
         activeCompanySummary = {
           id: orgRecord.id,
@@ -257,20 +266,20 @@ export const getCurrentUser = cache(async function getCurrentUser(): Promise<Aut
     const activeRole = activeMembership?.role || user.role;
     const activePermissions = activeRole.rolePermissions.map((rp) => rp.permission.code);
 
-    // Determine employee profile for active company
+    // Determine employee profile for active company (reuse in-memory employee if already for this company)
     let activeEmployee: any = null;
     if (activeCompanyId) {
-      activeEmployee = await db.employee.findFirst({
-        where: {
-          organizationId: activeCompanyId,
-          OR: [{ userId: user.id }, { email: user.email }],
-        },
-        include: { department: true, team: true, organization: true },
-      });
-    }
-
-    if (!activeEmployee && user.employee && user.employee.organizationId === activeCompanyId) {
-      activeEmployee = user.employee;
+      if (user.employee && user.employee.organizationId === activeCompanyId) {
+        activeEmployee = user.employee;
+      } else {
+        activeEmployee = await db.employee.findFirst({
+          where: {
+            organizationId: activeCompanyId,
+            OR: [{ userId: user.id }, { email: user.email }],
+          },
+          include: { department: true, team: true, organization: true },
+        });
+      }
     }
 
     // Build employee context strictly bound to the active company

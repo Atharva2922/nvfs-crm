@@ -65,6 +65,10 @@ export async function GET(
             },
           },
         },
+        profile: true,
+        documents: {
+          orderBy: { uploadedAt: "desc" },
+        },
       },
     });
 

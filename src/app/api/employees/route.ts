@@ -23,6 +23,7 @@ const createEmployeeSchema = z.object({
   createSystemAccount: z.boolean().default(true),
   loginPassword: z.string().optional(),
   roleCode: z.string().default("EMPLOYEE"),
+  immediateActive: z.boolean().default(false),
 });
 
 export async function GET(req: NextRequest) {
@@ -89,7 +90,11 @@ export async function GET(req: NextRequest) {
             select: { id: true, title: true, status: true, priority: true },
           },
           operationAssignments: {
-            include: {
+            where: {
+              operation: { status: { in: ["ACTIVE", "SCHEDULED", "IN_PROGRESS"] } },
+            },
+            select: {
+              id: true,
               operation: { select: { id: true, status: true } },
             },
           },
@@ -308,6 +313,11 @@ export async function POST(req: NextRequest) {
     const count = await db.employee.count({ where: { organizationId: org.id } });
     const employeeNumber = `EMP-${orgCode}-EMP-${String(count + 1).padStart(3, "0")}`;
 
+    const isImmediate = parse.data.immediateActive === true;
+    const initialEmploymentStatus = isImmediate ? "ACTIVE" : "PROBATION";
+    const initialOnboardingStatus = isImmediate ? "COMPLETED" : "PENDING_PROFILE";
+    const initialProfileCompletion = isImmediate ? 100 : 20;
+
     const newEmployee = await db.employee.create({
       data: {
         organizationId: org.id,
@@ -321,7 +331,9 @@ export async function POST(req: NextRequest) {
         phone: parse.data.phone?.trim() || null,
         designation: parse.data.designation.trim(),
         employmentType: parse.data.employmentType,
-        employmentStatus: "ACTIVE",
+        employmentStatus: initialEmploymentStatus,
+        onboardingStatus: initialOnboardingStatus,
+        profileCompletion: initialProfileCompletion,
         workMode: parse.data.workMode,
         location: parse.data.location,
         emergencyContact: parse.data.emergencyContact?.trim() || null,
@@ -333,6 +345,18 @@ export async function POST(req: NextRequest) {
         user: { select: { id: true, email: true, role: true } },
       },
     });
+
+    // Auto-create initial blank/prefilled EmployeeProfile
+    await db.employeeProfile.create({
+      data: {
+        employeeId: newEmployee.id,
+        personalEmail: corporateEmail,
+        currentAddress: parse.data.location,
+        country: "India",
+        primaryContactPhone: parse.data.phone?.trim() || undefined,
+        primaryContactName: parse.data.emergencyContact?.trim() || undefined,
+      },
+    }).catch(() => {});
 
     // Auto-allocate 2026 leave balances
     const leavePolicies = await db.leavePolicy.findMany({ where: { organizationId: org.id } });

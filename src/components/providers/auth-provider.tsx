@@ -1,6 +1,6 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from "react";
 import {
   AuthenticatedUser,
   SystemRoleCode,
@@ -109,26 +109,45 @@ export function AuthProvider({ children, initialUser }: AuthProviderProps) {
     [isSuperAdmin, roleLevel, permissions]
   );
 
+  const authContextValue = useMemo<AuthContextValue>(
+    () => ({
+      user,
+      role,
+      roleLevel,
+      roleName,
+      permissions,
+      activeCompany,
+      memberships,
+      isMultiCompanyUser,
+      isSuperAdmin,
+      isExecutive,
+      isDeptHead,
+      isManager,
+      hasPermission,
+      refreshUser,
+      switchCompany,
+    }),
+    [
+      user,
+      role,
+      roleLevel,
+      roleName,
+      permissions,
+      activeCompany,
+      memberships,
+      isMultiCompanyUser,
+      isSuperAdmin,
+      isExecutive,
+      isDeptHead,
+      isManager,
+      hasPermission,
+      refreshUser,
+      switchCompany,
+    ]
+  );
+
   return (
-    <AuthContext.Provider
-      value={{
-        user,
-        role,
-        roleLevel,
-        roleName,
-        permissions,
-        activeCompany,
-        memberships,
-        isMultiCompanyUser,
-        isSuperAdmin,
-        isExecutive,
-        isDeptHead,
-        isManager,
-        hasPermission,
-        refreshUser,
-        switchCompany,
-      }}
-    >
+    <AuthContext.Provider value={authContextValue}>
       {children}
     </AuthContext.Provider>
   );

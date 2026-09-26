@@ -69,6 +69,8 @@ interface EmployeeItem {
   manager?: { id: string; firstName: string; lastName: string; designation: string } | null;
   user?: { id: string; role: { code: string; name: string } } | null;
   organization?: { id: string; name: string; code: string } | null;
+  onboardingStatus?: string;
+  profileCompletion?: number;
 }
 
 import { useAuth } from "@/components/providers/auth-provider";
@@ -107,6 +109,7 @@ export default function EmployeeDirectoryPage() {
     createSystemAccount: true,
     loginPassword: "",
     roleCode: "EMPLOYEE",
+    immediateActive: false,
   });
 
   const fetchEmployees = useCallback(async () => {
@@ -211,6 +214,7 @@ export default function EmployeeDirectoryPage() {
         throw new Error(json.error?.message || "Failed to create employee");
       }
 
+      const createdEmp = json.data;
       setIsDrawerOpen(false);
       setFormData({
         firstName: "",
@@ -227,8 +231,14 @@ export default function EmployeeDirectoryPage() {
         createSystemAccount: true,
         loginPassword: "",
         roleCode: "EMPLOYEE",
+        immediateActive: false,
       });
-      fetchEmployees();
+
+      if (createdEmp?.id) {
+        window.location.href = `/app/hr/employees/${createdEmp.id}`;
+      } else {
+        fetchEmployees();
+      }
     } catch (err: any) {
       setCreateError(err.message || "Error creating employee");
     } finally {
@@ -499,26 +509,40 @@ export default function EmployeeDirectoryPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={
-                            emp.employmentStatus === "ACTIVE"
-                              ? "success"
-                              : emp.employmentStatus === "PROBATION"
-                              ? "warning"
-                              : "default"
-                          }
-                          size="sm"
-                        >
-                          {emp.employmentStatus}
-                        </Badge>
+                        <div className="flex flex-col gap-1 items-start">
+                          <Badge
+                            variant={
+                              emp.employmentStatus === "ACTIVE"
+                                ? "success"
+                                : emp.onboardingStatus === "PENDING_APPROVAL"
+                                ? "warning"
+                                : "default"
+                            }
+                            size="sm"
+                          >
+                            {emp.employmentStatus === "ACTIVE"
+                              ? "ACTIVE"
+                              : emp.onboardingStatus === "PENDING_APPROVAL"
+                              ? "PENDING APPROVAL"
+                              : emp.onboardingStatus === "PENDING_VERIFICATION"
+                              ? "DOCS PENDING"
+                              : `PROFILE ${emp.profileCompletion || 20}%`}
+                          </Badge>
+                          {emp.employmentStatus !== "ACTIVE" && (
+                            <span className="text-[10px] text-amber-400 font-mono">
+                              Onboarding: {emp.profileCompletion || 20}%
+                            </span>
+                          )}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         <Link
                           href={`/app/hr/employees/${emp.id}`}
-                          className="inline-flex items-center rounded p-1 text-slate-400 hover:bg-slate-800 hover:text-white transition-colors"
-                          title="View Profile"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 border border-blue-500/20 hover:border-blue-500/40 transition-colors whitespace-nowrap"
+                          title="Complete Profile & View Dossier"
                         >
-                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span>{emp.employmentStatus === "ACTIVE" ? "Dossier" : "Complete Profile"}</span>
+                          <ExternalLink className="h-3 w-3" />
                         </Link>
                       </TableCell>
                     </TableRow>
@@ -567,11 +591,29 @@ export default function EmployeeDirectoryPage() {
         }
       >
         <form onSubmit={handleCreateSubmit} className="space-y-4">
-          {createError && (
-            <div className="rounded border border-rose-900/60 bg-rose-950/40 p-2.5 text-xs text-rose-300 font-medium">
-              {createError}
+          {/* Onboarding Lifecycle Roadmap Card */}
+          <div className="rounded-xl border border-blue-500/30 bg-blue-950/30 p-3.5 space-y-2.5">
+            <div className="flex items-center justify-between text-xs font-semibold text-blue-300">
+              <span>Employee Onboarding Pipeline</span>
+              <span className="text-[10px] font-mono bg-blue-900/60 px-2 py-0.5 rounded text-blue-200 border border-blue-700/50">
+                10-Section Dossier
+              </span>
             </div>
-          )}
+            <div className="flex items-center gap-1.5 text-[11px] text-slate-300 overflow-x-auto pb-1">
+              <span className="px-2 py-0.5 rounded bg-blue-600 text-white font-medium shrink-0">1. Basic Account</span>
+              <span className="text-slate-500">→</span>
+              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">2. Complete Profile</span>
+              <span className="text-slate-500">→</span>
+              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">3. Doc Verification</span>
+              <span className="text-slate-500">→</span>
+              <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">4. HR Approval</span>
+              <span className="text-slate-500">→</span>
+              <span className="px-2 py-0.5 rounded bg-emerald-950 text-emerald-400 border border-emerald-800/40 shrink-0">Active</span>
+            </div>
+            <p className="text-[11px] text-slate-400">
+              Creating this account will initialize the official employee master record and redirect to the 10-section dossier for complete verification.
+            </p>
+          </div>
 
           <div className="grid grid-cols-2 gap-3">
             <Input

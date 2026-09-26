@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
@@ -76,10 +76,7 @@ export function Sidebar() {
     .join("")
     .toUpperCase();
 
-  // Build role-specific navigation groups
   // Build role-specific navigation groups strictly scoped by designation
-  const navGroups: NavGroup[] = [];
-
   const deptCode = (currentUser?.employee?.departmentCode || "").toUpperCase();
   const deptName = (currentUser?.employee?.departmentName || "").toLowerCase();
   const designation = (currentUser?.employee?.designation || "").toLowerCase();
@@ -108,6 +105,9 @@ export function Sidebar() {
     deptName.includes("international") ||
     designation.includes("international") ||
     userEmail.startsWith("international");
+
+  const navGroups: NavGroup[] = useMemo(() => {
+    const navGroups: NavGroup[] = [];
 
   // ========================================================
   // 1. SUPER ADMIN (Platform-Level Cockpit & Read-Only Governance)
@@ -309,6 +309,18 @@ export function Sidebar() {
       { title: "Personal Settings", href: "/app/settings", icon: Settings },
     ],
   });
+
+    return navGroups;
+  }, [
+    isSuperAdmin,
+    role,
+    roleLevel,
+    deptCode,
+    deptName,
+    designation,
+    userEmail,
+    permissions,
+  ]);
 
   return (
     <aside

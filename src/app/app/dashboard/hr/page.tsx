@@ -96,7 +96,13 @@ export default async function AppHrDashboardPage() {
           select: { id: true },
         },
         operationAssignments: {
-          include: { operation: { select: { id: true, status: true } } },
+          where: {
+            operation: { status: { in: ["ACTIVE", "SCHEDULED", "IN_PROGRESS"] } },
+          },
+          select: {
+            id: true,
+            operation: { select: { id: true, status: true } },
+          },
         },
         onDutyAssignments: {
           where: { status: { in: ["ASSIGNED", "IN_PROGRESS"] } },

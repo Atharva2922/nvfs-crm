@@ -24,6 +24,33 @@ export function invalidateNotificationUnreadCache(userId?: string) {
 
 export class NotificationService {
   /**
+   * Creates and dispatches a notification
+   */
+  static async create(data: {
+    organizationId: string;
+    userId: string;
+    type: string;
+    title: string;
+    message: string;
+    priority?: string;
+    actionUrl?: string;
+    link?: string;
+  }) {
+    const res = await db.notification.create({
+      data: {
+        organizationId: data.organizationId,
+        userId: data.userId,
+        type: data.type,
+        title: data.title,
+        message: data.message,
+        priority: data.priority || "NORMAL",
+        actionUrl: data.actionUrl || data.link || null,
+      },
+    });
+    invalidateNotificationUnreadCache(data.userId);
+    return res;
+  }
+  /**
    * Retrieves notifications for a given user
    */
   static async getUserNotifications(userId: string, options: GetNotificationsOptions = {}) {

@@ -279,6 +279,15 @@ model Employee {
   createdAt        DateTime     @default(now())
   updatedAt        DateTime     @updatedAt
 
+  // Onboarding & Profile Verification Lifecycle
+  onboardingStatus String       @default("COMPLETED") // PENDING_PROFILE, PENDING_VERIFICATION, PENDING_APPROVAL, COMPLETED, REJECTED
+  profileCompletion Int         @default(100)         // 0-100 percentage
+  approvalNotes    String?
+  approvedAt       DateTime?
+  approvedBy       String?
+  profile          EmployeeProfile?
+  documents        EmployeeDocument[]
+
   // HR Relations
   leaveBalances      LeaveBalance[]
   leaveRequests      LeaveRequest[]
@@ -368,7 +377,109 @@ model Employee {
   @@index([departmentId])
   @@index([teamId])
   @@index([managerId])
-  @@index([employeeNumber])
+  @@index([organizationId, employmentStatus])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, designation])
+  @@index([onboardingStatus])
+  @@index([lastName, firstName])
+}
+ 
+// ==========================================
+// 6B. EMPLOYEE PROFILE & DOSSIER (Complete Profile Workflow)
+// ==========================================
+
+model EmployeeProfile {
+  id                      String       @id @default(cuid())
+  employeeId              String       @unique
+  employee                Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  // 1. Personal Information
+  dateOfBirth             DateTime?
+  gender                  String?      // MALE, FEMALE, NON_BINARY, OTHER
+  maritalStatus           String?      // SINGLE, MARRIED, DIVORCED, WIDOWED
+  bloodGroup              String?      // A+, A-, B+, B-, AB+, AB-, O+, O-
+  nationality             String?      @default("Indian")
+  fatherOrSpouseName      String?
+  bio                     String?
+
+  // 3. Contact & Address
+  currentAddress          String?
+  permanentAddress        String?
+  personalEmail           String?
+  alternatePhone          String?
+  city                    String?
+  state                   String?
+  postalCode              String?
+  country                 String?      @default("India")
+
+  // 4. Government IDs
+  panNumber               String?
+  aadhaarNumber           String?
+  passportNumber          String?
+  passportExpiry          DateTime?
+  ssnOrNationalId         String?
+  taxId                   String?
+
+  // 5. Bank / Payroll
+  bankName                String?
+  accountHolderName       String?
+  accountNumber           String?
+  ifscOrRoutingCode       String?
+  branchName              String?
+  accountType             String?      @default("SAVINGS") // SAVINGS, CURRENT, SALARY
+  upiId                   String?
+
+  // 6. Emergency Contact
+  primaryContactName      String?
+  primaryContactRelation  String?
+  primaryContactPhone     String?
+  secondaryContactName    String?
+  secondaryContactRelation String?
+  secondaryContactPhone   String?
+
+  // 7. Education
+  highestDegree           String?
+  institution             String?
+  fieldOfStudy            String?
+  graduationYear          Int?
+  gradeOrGpa              String?
+  certifications          String?
+
+  // 8. Professional Details
+  previousEmployer        String?
+  previousDesignation     String?
+  totalExperienceYears    Float?       @default(0)
+  skills                  String?      // comma-separated or json array
+  linkedinUrl             String?
+  portfolioUrl            String?
+
+  createdAt               DateTime     @default(now())
+  updatedAt               DateTime     @updatedAt
+
+  @@index([employeeId])
+}
+
+model EmployeeDocument {
+  id                 String       @id @default(cuid())
+  employeeId         String
+  employee           Employee     @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  
+  type               String       // RESUME, GOVT_ID, AADHAAR, PAN, PASSPORT, ADDRESS_PROOF, EDUCATION_CERTIFICATE, EXPERIENCE_LETTER, OFFER_LETTER, OTHER
+  title              String       // Display title e.g. "Aadhaar Card Front & Back"
+  fileName           String
+  fileUrl            String       // Storage path, data URL, or doc link
+  fileSize           Int?         // in bytes
+  mimeType           String?
+  verificationStatus String       @default("PENDING") // PENDING, VERIFIED, REJECTED
+  verificationNotes  String?
+  verifiedAt         DateTime?
+  verifiedBy         String?      // Verifier name / ID
+  uploadedAt         DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  @@index([employeeId])
+  @@index([verificationStatus])
+  @@index([employeeId, verificationStatus])
 }
 
 // ==========================================
@@ -584,6 +695,8 @@ model AuditLog {
   @@index([actorId])
   @@index([organizationId])
   @@index([createdAt])
+  @@index([organizationId, createdAt])
+  @@index([entity, entityId])
 }
 
 // ==========================================
@@ -883,6 +996,8 @@ model Task {
   @@index([relatedPurchaseOrderId])
   @@index([operationId])
   @@index([dependencyId])
+  @@index([organizationId, status])
+  @@index([assigneeId, status])
 }
 
 // ==========================================
@@ -963,6 +1078,7 @@ model Notification {
   @@index([isRead])
   @@index([type])
   @@index([createdAt])
+  @@index([userId, isRead])
 }
 
 // ==========================================
@@ -1080,6 +1196,7 @@ model Lead {
   @@index([status])
   @@index([companyName])
   @@index([email])
+  @@index([organizationId, status])
 }
 
 // ==========================================
@@ -1120,6 +1237,7 @@ model Opportunity {
   @@index([ownerId])
   @@index([stage])
   @@index([expectedCloseDate])
+  @@index([organizationId, stage])
 }
 
 // ==========================================
@@ -1226,6 +1344,8 @@ model Invoice {
   @@index([dueDate])
   @@index([invoiceDate])
   @@index([contractId])
+  @@index([organizationId, invoiceDate, status])
+  @@index([organizationId, balance])
 }
 
 // ==========================================
@@ -1350,6 +1470,7 @@ model Expense {
   @@index([date])
   @@index([contractId])
   @@index([caseId])
+  @@index([organizationId, date, status])
 }
 
 // ==========================================
