@@ -20,7 +20,11 @@ import {
   Layers,
   Users,
   ShieldCheck,
+  Sliders,
+  Sparkles,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
+import { CeoLeaveManagementPanel } from "@/modules/hr/components/ceo-leave-management-panel";
 
 interface LeaveBalance {
   id: string;
@@ -68,7 +72,19 @@ interface LeaveRequestItem {
 }
 
 export default function LeavesPage() {
-  const [activeTab, setActiveTab] = useState<"my" | "team" | "policies">("my");
+  const { user: currentUser, role, roleLevel, isSuperAdmin, isExecutive } = useAuth();
+  const [activeTab, setActiveTab] = useState<"my" | "team" | "policies" | "management">("my");
+
+  // Determine if current user has executive or HR leave governance privileges
+  const isCeoOrHrOrAdmin =
+    isSuperAdmin ||
+    isExecutive ||
+    role === "SUPER_ADMIN" ||
+    role === "ADMIN" ||
+    role === "CEO" ||
+    role === "CHAIRPERSON" ||
+    role === "HR" ||
+    (roleLevel ?? 0) >= 70;
   const [balances, setBalances] = useState<LeaveBalance[]>([]);
   const [myRequests, setMyRequests] = useState<LeaveRequestItem[]>([]);
   const [teamRequests, setTeamRequests] = useState<LeaveRequestItem[]>([]);
@@ -250,16 +266,28 @@ export default function LeavesPage() {
         title="Enterprise Leave Management"
         description="Statutory & custom leave policies, balance tracking, automated non-working day exclusions, and supervisor authorization workflows."
         actions={
-          <Button
-            onClick={() => {
-              setApplyError(null);
-              setIsApplyOpen(true);
-            }}
-            className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm"
-          >
-            <PlusCircle className="h-4 w-4" />
-            Apply for Leave
-          </Button>
+          <div className="flex items-center gap-2">
+            {isCeoOrHrOrAdmin && (
+              <Button
+                variant="outline"
+                onClick={() => setActiveTab("management")}
+                className="border-amber-500/40 text-amber-300 hover:bg-amber-950/30 gap-1.5 shadow-sm text-xs"
+              >
+                <Sliders className="h-3.5 w-3.5 text-amber-400" />
+                CEO & HR Controls
+              </Button>
+            )}
+            <Button
+              onClick={() => {
+                setApplyError(null);
+                setIsApplyOpen(true);
+              }}
+              className="bg-blue-600 hover:bg-blue-500 text-white gap-1.5 shadow-sm text-xs"
+            >
+              <PlusCircle className="h-4 w-4" />
+              Apply for Leave
+            </Button>
+          </div>
         }
       />
 
@@ -307,6 +335,23 @@ export default function LeavesPage() {
           <Layers className="h-4 w-4" />
           Company Leave Policies
         </button>
+
+        {isCeoOrHrOrAdmin && (
+          <button
+            onClick={() => setActiveTab("management")}
+            className={`pb-3 border-b-2 transition-colors flex items-center gap-2 ${
+              activeTab === "management"
+                ? "border-blue-500 text-blue-400 font-semibold"
+                : "border-transparent text-slate-400 hover:text-slate-200"
+            }`}
+          >
+            <Sliders className="h-4 w-4 text-amber-400" />
+            CEO / HR Leave Management
+            <span className="ml-1 rounded bg-amber-500/15 border border-amber-500/30 text-amber-400 text-[10px] font-bold px-1.5 py-0.5">
+              EXECUTIVE
+            </span>
+          </button>
+        )}
       </div>
 
       {/* TAB 1: MY LEAVES */}
@@ -587,6 +632,11 @@ export default function LeavesPage() {
         </div>
       )}
 
+      {/* TAB 4: CEO / HR EXECUTIVE MANAGEMENT */}
+      {activeTab === "management" && isCeoOrHrOrAdmin && (
+        <CeoLeaveManagementPanel onRefreshParent={fetchLeaves} />
+      )}
+
       {/* APPLY LEAVE DIALOG */}
       <Dialog open={isApplyOpen} onOpenChange={setIsApplyOpen}>
         <DialogContent className="sm:max-w-[480px] bg-[#0f172a] border-slate-800 text-slate-100">
@@ -615,12 +665,28 @@ export default function LeavesPage() {
                 onChange={(e) => setApplyCode(e.target.value)}
                 className="w-full rounded-md border border-slate-700 bg-slate-900 px-3 py-2 text-xs text-slate-100 focus:border-blue-500 focus:outline-none"
               >
-                <option value="CL">CL — Casual Leave (12/yr, Max 2/month)</option>
-                <option value="EL">EL — Emergency Leave (3/yr)</option>
-                <option value="ML">ML — Medical Leave (3/yr)</option>
-                <option value="LWP">LWP — Leave Without Pay</option>
-                <option value="C_OFF">C-Off — Compensatory Off</option>
-                <option value="HDW">HDW — Half-Day Work (0.5d)</option>
+                {allPolicies.length > 0 ? (
+                  allPolicies.map((p) => {
+                    const userBal = balances.find((b) => b.leavePolicy.code === p.code);
+                    const balBadge = userBal !== undefined ? ` [${userBal.remaining}d remaining]` : "";
+                    const monthlyText = p.monthlyLimit ? ` (Max ${p.monthlyLimit}/mo)` : "";
+                    const allowanceText = p.annualAllowance > 0 ? `${p.annualAllowance}d/yr` : "Special";
+                    return (
+                      <option key={p.id || p.code} value={p.code}>
+                        {p.code} — {p.name} ({allowanceText}{monthlyText}){balBadge}
+                      </option>
+                    );
+                  })
+                ) : (
+                  <>
+                    <option value="CL">CL — Casual Leave (12/yr, Max 2/month)</option>
+                    <option value="EL">EL — Emergency Leave (2/yr)</option>
+                    <option value="ML">ML — Medical Leave (2/yr)</option>
+                    <option value="LWP">LWP — Leave Without Pay</option>
+                    <option value="C_OFF">C-Off — Compensatory Off</option>
+                    <option value="HDW">HDW — Half-Day Work (0.5d)</option>
+                  </>
+                )}
               </select>
             </div>
 

@@ -157,10 +157,26 @@ export class LeaveService {
       throw new Error("Selected date range contains 0 working days (all dates fall on weekends or public holidays).");
     }
 
-    // 2. Find Leave Policy
-    const policy = await db.leavePolicy.findFirst({
-      where: { code: leavePolicyCode },
+    // 2. Resolve employee and find Leave Policy scoped to employee's organization
+    const employee = await db.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, organizationId: true },
     });
+    if (!employee) throw new Error("Employee record not found");
+
+    let policy = await db.leavePolicy.findFirst({
+      where: {
+        organizationId: employee.organizationId,
+        code: leavePolicyCode,
+      },
+    });
+
+    if (!policy) {
+      policy = await db.leavePolicy.findFirst({
+        where: { code: leavePolicyCode },
+      });
+    }
+
     if (!policy) {
       throw new Error(`Invalid leave policy code: ${leavePolicyCode}`);
     }
@@ -173,8 +189,8 @@ export class LeaveService {
       await this.validateMonthlyClLimit(employeeId, start, daysCount);
     }
 
-    // 5. Validate Leave Balance (except for unpaid leave LWP)
-    const balance = await db.leaveBalance.findUnique({
+    // 5. Validate & Ensure Leave Balance (except for unpaid leave LWP)
+    let balance = await db.leaveBalance.findUnique({
       where: {
         employeeId_leavePolicyId_year: {
           employeeId,
@@ -183,6 +199,20 @@ export class LeaveService {
         },
       },
     });
+
+    if (!balance && policy.annualAllowance >= 0) {
+      balance = await db.leaveBalance.create({
+        data: {
+          employeeId,
+          leavePolicyId: policy.id,
+          year: currentYear,
+          allocated: policy.annualAllowance,
+          used: 0,
+          pending: 0,
+          remaining: policy.annualAllowance,
+        },
+      });
+    }
 
     if (policy.code !== "LWP" && policy.annualAllowance > 0) {
       if (!balance || balance.remaining < daysCount) {
@@ -510,5 +540,197 @@ export class LeaveService {
 
       return updated;
     }, { timeout: 20000, maxWait: 15000 });
+  }
+
+  /**
+   * Updates a leave policy (annual allowance, monthly limit, name, description)
+   */
+  static async updateLeavePolicy(
+    policyId: string,
+    data: {
+      annualAllowance?: number;
+      monthlyLimit?: number | null;
+      name?: string;
+      description?: string | null;
+      syncEmployeeBalances?: boolean;
+    }
+  ) {
+    const updated = await db.leavePolicy.update({
+      where: { id: policyId },
+      data: {
+        annualAllowance: data.annualAllowance !== undefined ? data.annualAllowance : undefined,
+        monthlyLimit: data.monthlyLimit !== undefined ? data.monthlyLimit : undefined,
+        name: data.name || undefined,
+        description: data.description !== undefined ? data.description : undefined,
+      },
+    });
+
+    if (data.syncEmployeeBalances && data.annualAllowance !== undefined) {
+      const currentYear = new Date().getFullYear();
+      const balances = await db.leaveBalance.findMany({
+        where: { leavePolicyId: policyId, year: currentYear },
+      });
+
+      for (const b of balances) {
+        const remaining = Math.max(0, data.annualAllowance - b.used - b.pending);
+        await db.leaveBalance.update({
+          where: { id: b.id },
+          data: {
+            allocated: data.annualAllowance,
+            remaining,
+          },
+        });
+      }
+    }
+
+    return updated;
+  }
+
+  /**
+   * Adjusts an individual employee's leave balance (increase or decrease)
+   */
+  static async adjustEmployeeBalance(
+    balanceId: string,
+    adjustment: number
+  ) {
+    const balance = await db.leaveBalance.findUnique({
+      where: { id: balanceId },
+    });
+    if (!balance) throw new Error("Leave balance record not found");
+
+    const newAllocated = Math.max(0, balance.allocated + adjustment);
+    const newRemaining = Math.max(0, balance.remaining + adjustment);
+
+    return await db.leaveBalance.update({
+      where: { id: balanceId },
+      data: {
+        allocated: newAllocated,
+        remaining: newRemaining,
+      },
+      include: {
+        employee: { select: { firstName: true, lastName: true, employeeNumber: true } },
+        leavePolicy: true,
+      },
+    });
+  }
+
+  /**
+   * Resets all employee leave balances in an organization to current policy defaults
+   */
+  static async resetOrganizationBalances(organizationId: string, year = new Date().getFullYear()) {
+    const policies = await db.leavePolicy.findMany({
+      where: { organizationId },
+    });
+
+    const employees = await db.employee.findMany({
+      where: { organizationId, employmentStatus: "ACTIVE" },
+      select: { id: true },
+    });
+
+    let count = 0;
+    for (const emp of employees) {
+      for (const pol of policies) {
+        await db.leaveBalance.upsert({
+          where: {
+            employeeId_leavePolicyId_year: {
+              employeeId: emp.id,
+              leavePolicyId: pol.id,
+              year,
+            },
+          },
+          create: {
+            employeeId: emp.id,
+            leavePolicyId: pol.id,
+            year,
+            allocated: pol.annualAllowance,
+            used: 0,
+            pending: 0,
+            remaining: pol.annualAllowance,
+          },
+          update: {
+            allocated: pol.annualAllowance,
+            used: 0,
+            pending: 0,
+            remaining: pol.annualAllowance,
+          },
+        });
+        count++;
+      }
+    }
+
+    return { success: true, count, employeesCount: employees.length };
+  }
+
+  /**
+   * Gets organization-wide leave management overview for CEO/HR
+   */
+  static async getOrganizationManagementData(organizationId: string, year = new Date().getFullYear()) {
+    const [policies, pendingRequests, allRequests, employeesWithBalances] = await Promise.all([
+      db.leavePolicy.findMany({
+        where: { organizationId },
+        orderBy: { code: "asc" },
+      }),
+      db.leaveRequest.findMany({
+        where: {
+          employee: { organizationId },
+          status: "PENDING",
+        },
+        orderBy: { createdAt: "desc" },
+        include: {
+          employee: {
+            select: {
+              id: true,
+              firstName: true,
+              lastName: true,
+              employeeNumber: true,
+              designation: true,
+              department: { select: { name: true } },
+            },
+          },
+          leavePolicy: true,
+        },
+      }),
+      db.leaveRequest.findMany({
+        where: { employee: { organizationId } },
+        orderBy: { createdAt: "desc" },
+        take: 50,
+        include: {
+          employee: {
+            select: {
+              firstName: true,
+              lastName: true,
+              employeeNumber: true,
+              designation: true,
+              department: { select: { name: true } },
+            },
+          },
+          leavePolicy: true,
+          approvedBy: { select: { firstName: true, lastName: true } },
+        },
+      }),
+      db.employee.findMany({
+        where: { organizationId, employmentStatus: "ACTIVE" },
+        orderBy: [{ department: { name: "asc" } }, { firstName: "asc" }],
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          employeeNumber: true,
+          designation: true,
+          department: { select: { name: true } },
+          leaveBalances: {
+            where: { year },
+            include: { leavePolicy: true },
+          },
+        },
+      }),
+    ]);
+
+    return {
+      policies,
+      pendingRequests,
+      allRequests,
+      employeesWithBalances,
+    };
   }
 }
