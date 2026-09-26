@@ -3,7 +3,6 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme/theme-provider";
 
-import Script from "next/script";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -35,9 +34,11 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased dark`}
     >
       <head>
-        <Script id="nfvs-theme-init" strategy="beforeInteractive">
-          {THEME_INIT_SCRIPT}
-        </Script>
+        <script
+          id="nfvs-theme-init"
+          dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }}
+          suppressHydrationWarning
+        />
       </head>
       <body className="min-h-full flex flex-col bg-slate-50 dark:bg-[#070b16] text-slate-900 dark:text-slate-100 selection:bg-blue-700 selection:text-amber-100 transition-colors duration-200">
         <ThemeProvider>{children}</ThemeProvider>

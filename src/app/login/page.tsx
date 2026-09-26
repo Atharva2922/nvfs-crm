@@ -92,7 +92,7 @@ export default function LoginPage() {
             }}
           />
 
-          {/* Top Brand & Gateway Pill */}
+          {/* Top Brand */}
           <div className="relative z-10 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 font-bold text-white shadow-lg shadow-blue-600/25 border border-blue-400/30">
@@ -109,11 +109,6 @@ export default function LoginPage() {
                   Unified Back-Office Management Cloud
                 </p>
               </div>
-            </div>
-
-            <div className="flex items-center gap-2 rounded-full border border-[#1e3258] bg-[#121c33]/80 px-3 py-1 text-xs text-slate-300 backdrop-blur-md">
-              <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[11px] font-mono font-medium">Gateway 17.6 Online</span>
             </div>
           </div>
 
@@ -229,10 +224,6 @@ export default function LoginPage() {
               <span className="text-sm font-bold text-white tracking-tight">
                 CRM + NFVS Enterprise
               </span>
-            </div>
-            <div className="flex items-center gap-1.5 text-[10px] font-mono text-emerald-400 bg-emerald-500/10 px-2 py-1 rounded-full border border-emerald-500/20">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-              Online
             </div>
           </div>
 
@@ -389,16 +380,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Bottom Footer */}
-          <div className="mt-8 flex items-center justify-center border-t border-[#16233d] pt-4 text-[11px] text-slate-400">
-            <button
-              type="button"
-              onClick={() => setIsForgotPasswordOpen(true)}
-              className="hover:text-blue-400 transition-colors"
-            >
-              Admin Support
-            </button>
-          </div>
+
         </div>
       </div>
 
