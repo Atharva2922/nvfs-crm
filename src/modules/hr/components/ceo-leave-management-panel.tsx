@@ -98,6 +98,9 @@ export function CeoLeaveManagementPanel({
   const [syncWithEmployees, setSyncWithEmployees] = useState(true);
   const [savingPolicy, setSavingPolicy] = useState(false);
 
+  // Approve action state
+  const [approvingRequestId, setApprovingRequestId] = useState<string | null>(null);
+
   // Reject modal state
   const [rejectingRequestId, setRejectingRequestId] = useState<string | null>(null);
   const [rejectReason, setRejectReason] = useState("");
@@ -142,6 +145,8 @@ export function CeoLeaveManagementPanel({
   // 1. Approve Leave Request
   const handleApprove = async (requestId: string) => {
     try {
+      setApprovingRequestId(requestId);
+      setErrorMsg(null);
       const res = await fetch(`/api/hr/leaves/${requestId}/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -152,11 +157,13 @@ export function CeoLeaveManagementPanel({
         throw new Error(json.error?.message || "Failed to approve request");
       }
 
-      showNotification("Leave request approved successfully!");
+      showNotification("Leave request approved successfully! Attendance updated.");
       await fetchManagementData();
       onRefreshParent?.();
     } catch (err: any) {
-      alert("Approval error: " + err.message);
+      setErrorMsg("Approval failed: " + err.message);
+    } finally {
+      setApprovingRequestId(null);
     }
   };
 
@@ -493,14 +500,24 @@ export function CeoLeaveManagementPanel({
                       <div className="flex items-center justify-end gap-1.5">
                         <Button
                           size="sm"
+                          disabled={approvingRequestId === req.id || rejectSubmitting}
                           onClick={() => handleApprove(req.id)}
                           className="h-7 px-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs gap-1 shadow-sm"
                         >
-                          <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                          {approvingRequestId === req.id ? (
+                            <>
+                              <RefreshCw className="h-3 w-3 animate-spin" /> Approving...
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Approve
+                            </>
+                          )}
                         </Button>
                         <Button
                           size="sm"
                           variant="outline"
+                          disabled={approvingRequestId === req.id || rejectSubmitting}
                           onClick={() => {
                             setRejectingRequestId(req.id);
                             setRejectReason("");

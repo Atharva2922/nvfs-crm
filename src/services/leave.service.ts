@@ -253,37 +253,39 @@ export class LeaveService {
         });
       }
 
-      await AuditService.logMutation({
-        actorId: request.employee.userId || undefined,
-        action: "LEAVE_REQUEST_CREATED",
-        entity: "LeaveRequest",
-        entityId: request.id,
-        newValue: {
-          employeeNumber: request.employee.employeeNumber,
-          policy: policy.code,
-          daysCount,
-          startDate: start.toISOString(),
-          endDate: end.toISOString(),
-        },
-        metadata: { source: "leave_service" },
-      });
-
-      // Notify manager via EventBus if employee has a manager
-      if (request.employee.manager?.userId) {
-        await EventBusService.publish({
-          type: "LEAVE_REQUEST",
-          organizationId: request.employee.organizationId,
-          actorId: request.employee.userId || undefined,
-          targetUserIds: [request.employee.manager.userId],
-          title: `Leave Request: ${request.employee.firstName} ${request.employee.lastName}`,
-          message: `${request.employee.firstName} applied for ${request.daysCount} day(s) of ${request.leavePolicy.code}.`,
-          actionUrl: "/app/hr/leaves",
-          metadata: { leaveRequestId: request.id },
-        });
-      }
-
       return request;
-    }, { timeout: 20000, maxWait: 15000 });
+    }, { timeout: 45000, maxWait: 20000 });
+
+    AuditService.logMutation({
+      actorId: request.employee.userId || undefined,
+      action: "LEAVE_REQUEST_CREATED",
+      entity: "LeaveRequest",
+      entityId: request.id,
+      newValue: {
+        employeeNumber: request.employee.employeeNumber,
+        policy: policy.code,
+        daysCount,
+        startDate: start.toISOString(),
+        endDate: end.toISOString(),
+      },
+      metadata: { source: "leave_service" },
+    }).catch((err) => console.error("[AuditService Warning]:", err));
+
+    // Notify manager via EventBus if employee has a manager
+    if (request.employee.manager?.userId) {
+      EventBusService.publish({
+        type: "LEAVE_REQUEST",
+        organizationId: request.employee.organizationId,
+        actorId: request.employee.userId || undefined,
+        targetUserIds: [request.employee.manager.userId],
+        title: `Leave Request: ${request.employee.firstName} ${request.employee.lastName}`,
+        message: `${request.employee.firstName} applied for ${request.daysCount} day(s) of ${request.leavePolicy.code}.`,
+        actionUrl: "/app/hr/leaves",
+        metadata: { leaveRequestId: request.id },
+      }).catch((err) => console.error("[EventBusService Warning]:", err));
+    }
+
+    return request;
   }
 
   /**
@@ -302,55 +304,61 @@ export class LeaveService {
 
     const currentYear = request.startDate.getFullYear();
 
-    return await db.$transaction(async (tx) => {
-      // 1. Update request status
-      const updatedRequest = await tx.leaveRequest.update({
-        where: { id: requestId },
-        data: {
-          status: "APPROVED",
-          approvedById: approverEmployeeId,
-          approvalNotes: notes || "Approved by management",
-        },
-      });
+    // Precalculate working dates in memory before transaction starts
+    const cur = new Date(request.startDate);
+    cur.setHours(0, 0, 0, 0);
+    const end = new Date(request.endDate);
+    end.setHours(0, 0, 0, 0);
 
-      // 2. Update Leave Balance: move from pending to used
-      const balance = await tx.leaveBalance.findUnique({
-        where: {
-          employeeId_leavePolicyId_year: {
-            employeeId: request.employeeId,
-            leavePolicyId: request.leavePolicyId,
-            year: currentYear,
-          },
-        },
-      });
+    const workingDates: Date[] = [];
+    while (cur <= end) {
+      const dayOfWeek = cur.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) {
+        workingDates.push(new Date(cur));
+      }
+      cur.setDate(cur.getDate() + 1);
+    }
 
-      if (balance) {
-        const newPending = Math.max(0, balance.pending - request.daysCount);
-        const newUsed = balance.used + request.daysCount;
-        const newRemaining = balance.allocated - newUsed - newPending;
-
-        await tx.leaveBalance.update({
-          where: { id: balance.id },
+    const updatedRequest = await db.$transaction(
+      async (tx) => {
+        // 1. Update request status
+        const updated = await tx.leaveRequest.update({
+          where: { id: requestId },
           data: {
-            pending: newPending,
-            used: newUsed,
-            remaining: newRemaining,
+            status: "APPROVED",
+            approvedById: approverEmployeeId,
+            approvalNotes: notes || "Approved by management",
           },
         });
-      }
 
-      // 3. Automated Attendance Synchronization
-      // For every working day in the range, create or update AttendanceRecord to ON_LEAVE
-      const cur = new Date(request.startDate);
-      cur.setHours(0, 0, 0, 0);
-      const end = new Date(request.endDate);
-      end.setHours(0, 0, 0, 0);
+        // 2. Update Leave Balance: move from pending to used
+        const balance = await tx.leaveBalance.findUnique({
+          where: {
+            employeeId_leavePolicyId_year: {
+              employeeId: request.employeeId,
+              leavePolicyId: request.leavePolicyId,
+              year: currentYear,
+            },
+          },
+        });
 
-      while (cur <= end) {
-        const dayOfWeek = cur.getDay();
-        // Only mark working days as ON_LEAVE
-        if (dayOfWeek !== 0 && dayOfWeek !== 6) {
-          const dateOnly = new Date(cur);
+        if (balance) {
+          const newPending = Math.max(0, balance.pending - request.daysCount);
+          const newUsed = balance.used + request.daysCount;
+          const newRemaining = balance.allocated - newUsed - newPending;
+
+          await tx.leaveBalance.update({
+            where: { id: balance.id },
+            data: {
+              pending: newPending,
+              used: newUsed,
+              remaining: newRemaining,
+            },
+          });
+        }
+
+        // 3. Automated Attendance Synchronization
+        for (const dateOnly of workingDates) {
           await tx.attendanceRecord.upsert({
             where: {
               employeeId_date: {
@@ -372,37 +380,39 @@ export class LeaveService {
             },
           });
         }
-        cur.setDate(cur.getDate() + 1);
-      }
 
-      await AuditService.logMutation({
-        action: "LEAVE_REQUEST_APPROVED",
-        entity: "LeaveRequest",
-        entityId: request.id,
-        newValue: {
-          requestId: request.id,
-          approvedBy: approverEmployeeId,
-          status: "APPROVED",
-        },
-        metadata: { source: "leave_service" },
-      });
+        return updated;
+      },
+      { timeout: 45000, maxWait: 20000 }
+    );
 
-      // Notify employee via EventBus
-      if (request.employee.userId) {
-        await EventBusService.publish({
-          type: "LEAVE_APPROVED",
-          organizationId: request.employee.organizationId,
-          actorId: approverEmployeeId,
-          targetUserIds: [request.employee.userId],
-          title: "Leave Request Approved",
-          message: `Your ${request.leavePolicy.code} leave request for ${request.daysCount} day(s) was approved.`,
-          actionUrl: "/app/hr/leaves",
-          metadata: { leaveRequestId: request.id },
-        });
-      }
+    // 4. Audit & Event Notification (non-blocking outside transaction to avoid pooler exhaustion)
+    AuditService.logMutation({
+      action: "LEAVE_REQUEST_APPROVED",
+      entity: "LeaveRequest",
+      entityId: request.id,
+      newValue: {
+        requestId: request.id,
+        approvedBy: approverEmployeeId,
+        status: "APPROVED",
+      },
+      metadata: { source: "leave_service" },
+    }).catch((err) => console.error("[AuditService Warning]:", err));
 
-      return updatedRequest;
-    }, { timeout: 20000, maxWait: 15000 });
+    if (request.employee?.userId) {
+      EventBusService.publish({
+        type: "LEAVE_APPROVED",
+        organizationId: request.employee.organizationId,
+        actorId: approverEmployeeId,
+        targetUserIds: [request.employee.userId],
+        title: "Leave Request Approved",
+        message: `Your ${request.leavePolicy.code} leave request for ${request.daysCount} day(s) was approved.`,
+        actionUrl: "/app/hr/leaves",
+        metadata: { leaveRequestId: request.id },
+      }).catch((err) => console.error("[EventBusService Warning]:", err));
+    }
+
+    return updatedRequest;
   }
 
   /**
@@ -454,20 +464,24 @@ export class LeaveService {
         });
       }
 
-      await AuditService.logMutation({
-        action: "LEAVE_REQUEST_REJECTED",
-        entity: "LeaveRequest",
-        entityId: request.id,
-        newValue: {
-          requestId: request.id,
-          rejectedBy: approverEmployeeId,
-          reason,
-        },
-        metadata: { source: "leave_service" },
-      });
+        return updated;
+      },
+      { timeout: 45000, maxWait: 20000 }
+    );
 
-      return updated;
-    }, { timeout: 20000, maxWait: 15000 });
+    AuditService.logMutation({
+      action: "LEAVE_REQUEST_REJECTED",
+      entity: "LeaveRequest",
+      entityId: request.id,
+      newValue: {
+        requestId: request.id,
+        rejectedBy: approverEmployeeId,
+        reason,
+      },
+      metadata: { source: "leave_service" },
+    }).catch((err) => console.error("[AuditService Warning]:", err));
+
+    return updated;
   }
 
   /**
@@ -488,58 +502,63 @@ export class LeaveService {
 
     const currentYear = request.startDate.getFullYear();
 
-    return await db.$transaction(async (tx) => {
-      const wasApproved = request.status === "APPROVED";
+    const updated = await db.$transaction(
+      async (tx) => {
+        const wasApproved = request.status === "APPROVED";
 
-      const updated = await tx.leaveRequest.update({
-        where: { id: requestId },
-        data: { status: "CANCELLED" },
-      });
+        const res = await tx.leaveRequest.update({
+          where: { id: requestId },
+          data: { status: "CANCELLED" },
+        });
 
-      const balance = await tx.leaveBalance.findUnique({
-        where: {
-          employeeId_leavePolicyId_year: {
-            employeeId: request.employeeId,
-            leavePolicyId: request.leavePolicyId,
-            year: currentYear,
+        const balance = await tx.leaveBalance.findUnique({
+          where: {
+            employeeId_leavePolicyId_year: {
+              employeeId: request.employeeId,
+              leavePolicyId: request.leavePolicyId,
+              year: currentYear,
+            },
           },
-        },
-      });
+        });
 
-      if (balance) {
-        if (wasApproved) {
-          const newUsed = Math.max(0, balance.used - request.daysCount);
-          const newRemaining = balance.allocated - newUsed - balance.pending;
-          await tx.leaveBalance.update({
-            where: { id: balance.id },
-            data: { used: newUsed, remaining: newRemaining },
-          });
+        if (balance) {
+          if (wasApproved) {
+            const newUsed = Math.max(0, balance.used - request.daysCount);
+            const newRemaining = balance.allocated - newUsed - balance.pending;
+            await tx.leaveBalance.update({
+              where: { id: balance.id },
+              data: { used: newUsed, remaining: newRemaining },
+            });
 
-          // Remove or revert associated attendance records
-          await tx.attendanceRecord.deleteMany({
-            where: { leaveRequestId: request.id },
-          });
-        } else {
-          // was pending
-          const newPending = Math.max(0, balance.pending - request.daysCount);
-          const newRemaining = balance.allocated - balance.used - newPending;
-          await tx.leaveBalance.update({
-            where: { id: balance.id },
-            data: { pending: newPending, remaining: newRemaining },
-          });
+            // Remove or revert associated attendance records
+            await tx.attendanceRecord.deleteMany({
+              where: { leaveRequestId: request.id },
+            });
+          } else {
+            // was pending
+            const newPending = Math.max(0, balance.pending - request.daysCount);
+            const newRemaining = balance.allocated - balance.used - newPending;
+            await tx.leaveBalance.update({
+              where: { id: balance.id },
+              data: { pending: newPending, remaining: newRemaining },
+            });
+          }
         }
-      }
 
-      await AuditService.logMutation({
-        action: "LEAVE_REQUEST_CANCELLED",
-        entity: "LeaveRequest",
-        entityId: request.id,
-        newValue: { requestId: request.id, status: "CANCELLED" },
-        metadata: { source: "leave_service" },
-      });
+        return res;
+      },
+      { timeout: 45000, maxWait: 20000 }
+    );
 
-      return updated;
-    }, { timeout: 20000, maxWait: 15000 });
+    AuditService.logMutation({
+      action: "LEAVE_REQUEST_CANCELLED",
+      entity: "LeaveRequest",
+      entityId: request.id,
+      newValue: { requestId: request.id, status: "CANCELLED" },
+      metadata: { source: "leave_service" },
+    }).catch((err) => console.error("[AuditService Warning]:", err));
+
+    return updated;
   }
 
   /**
