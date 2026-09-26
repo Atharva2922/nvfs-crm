@@ -98,9 +98,11 @@ interface CachedOverview {
 }
 
 const overviewCache = new Map<string, CachedOverview>();
-const OVERVIEW_CACHE_TTL_MS = 15 * 1000; // 15 seconds fresh TTL
+const inFlightOverviewPromises = new Map<string, Promise<OverviewTelemetryData>>();
+const OVERVIEW_CACHE_TTL_MS = 60 * 1000; // 60 seconds fresh TTL
 
 export function invalidateOverviewDashboardCache(organizationId?: string) {
+  inFlightOverviewPromises.clear();
   if (organizationId) {
     for (const key of overviewCache.keys()) {
       if (key.startsWith(`${organizationId}:`)) {
@@ -136,8 +138,16 @@ export class OverviewDashboardService {
       return cached.data;
     }
 
-    const nowDate = new Date();
-    const todayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate(), 0, 0, 0);
+    // Deduplicate in-flight concurrent requests for the same overview key
+    const existingPromise = inFlightOverviewPromises.get(cacheKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const loadPromise = (async () => {
+      try {
+        const nowDate = new Date();
+        const todayStart = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate(), 0, 0, 0);
     const todayEnd = new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate(), 23, 59, 59);
 
     // Parallelize all queries across tables in a single Promise.all
@@ -490,8 +500,15 @@ export class OverviewDashboardService {
       },
     };
 
-    overviewCache.set(cacheKey, { data: telemetry, cachedAt: now });
-    return telemetry;
+        overviewCache.set(cacheKey, { data: telemetry, cachedAt: Date.now() });
+        return telemetry;
+      } finally {
+        inFlightOverviewPromises.delete(cacheKey);
+      }
+    })();
+
+    inFlightOverviewPromises.set(cacheKey, loadPromise);
+    return loadPromise;
   }
 
   static invalidateOverviewCache(organizationId?: string) {

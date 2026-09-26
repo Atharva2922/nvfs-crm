@@ -6,6 +6,14 @@ import { AIProvider, AIActionPreview, AIResponsePayload, RecordSummaryPayload, A
 import { TaskService } from "../task.service";
 import { AuditService } from "../audit.service";
 
+interface CachedExecutiveAdvice {
+  data: AIAdvisorPayload;
+  cachedAt: number;
+}
+const executiveAdviceCache = new Map<string, CachedExecutiveAdvice>();
+const inFlightAdvicePromises = new Map<string, Promise<AIAdvisorPayload>>();
+const ADVICE_CACHE_TTL_MS = 60 * 1000; // 60 seconds
+
 export class AIService {
   private static internalEngine = new InternalIntelligenceEngine();
 
@@ -230,13 +238,38 @@ export class AIService {
   }
 
   /**
-   * Executive AI Advisor
+   * Executive AI Advisor with in-memory caching and request deduplication
    */
   static async getExecutiveAdvice(user: AuthenticatedUser): Promise<AIAdvisorPayload> {
     if (!user.employee) throw new Error("Authenticated employee profile required");
-    const metricsResult = await AITools.getDashboardMetrics(user);
-    const provider = await this.getProvider(user.employee.organizationId);
-    return provider.generateExecutiveAdvice(user.roleCode, metricsResult.metrics);
+    const orgId = user.employee.organizationId;
+    const cacheKey = `${orgId}:${user.roleCode}`;
+    const now = Date.now();
+
+    const cached = executiveAdviceCache.get(cacheKey);
+    if (cached && now - cached.cachedAt < ADVICE_CACHE_TTL_MS) {
+      return cached.data;
+    }
+
+    const existingPromise = inFlightAdvicePromises.get(cacheKey);
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const promise = (async () => {
+      try {
+        const metricsResult = await AITools.getDashboardMetrics(user);
+        const provider = await this.getProvider(orgId);
+        const result = await provider.generateExecutiveAdvice(user.roleCode, metricsResult.metrics);
+        executiveAdviceCache.set(cacheKey, { data: result, cachedAt: Date.now() });
+        return result;
+      } finally {
+        inFlightAdvicePromises.delete(cacheKey);
+      }
+    })();
+
+    inFlightAdvicePromises.set(cacheKey, promise);
+    return promise;
   }
 
   /**

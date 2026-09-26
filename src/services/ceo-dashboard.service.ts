@@ -17,9 +17,11 @@ interface CachedExecutiveDashboard {
   cachedAt: number;
 }
 const executiveDashboardCache = new Map<string, CachedExecutiveDashboard>();
-const CEO_DASHBOARD_CACHE_TTL_MS = 45 * 1000; // 45 seconds fresh TTL
+const inFlightDashboardPromises = new Map<string, Promise<any>>();
+const CEO_DASHBOARD_CACHE_TTL_MS = 60 * 1000; // 60 seconds fresh TTL
 
 export function invalidateCeoDashboardCache(organizationId?: string) {
+  inFlightDashboardPromises.clear();
   if (organizationId) {
     for (const key of executiveDashboardCache.keys()) {
       if (key.startsWith(`${organizationId}:`)) {
@@ -108,7 +110,14 @@ export class CeoDashboardService {
       if (cached && now.getTime() - cached.cachedAt < CEO_DASHBOARD_CACHE_TTL_MS) {
         return cached.data;
       }
+      const existingPromise = inFlightDashboardPromises.get(cacheKey);
+      if (existingPromise) {
+        return existingPromise;
+      }
     }
+
+    const loadPromise = (async () => {
+      try {
 
     // =========================================================================
     // HIGH CONCURRENCY EXECUTION: ALL DATASETS LOADED IN PARALLEL
@@ -856,7 +865,16 @@ export class CeoDashboardService {
       upcomingEvents,
     };
 
-    executiveDashboardCache.set(cacheKey, { data: result, cachedAt: Date.now() });
-    return result;
+        executiveDashboardCache.set(cacheKey, { data: result, cachedAt: Date.now() });
+        return result;
+      } finally {
+        inFlightDashboardPromises.delete(cacheKey);
+      }
+    })();
+
+    if (!filters.forceRefresh) {
+      inFlightDashboardPromises.set(cacheKey, loadPromise);
+    }
+    return loadPromise;
   }
 }
