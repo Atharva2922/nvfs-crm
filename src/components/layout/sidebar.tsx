@@ -69,6 +69,13 @@ export function Sidebar() {
   const companyName = activeCompany?.name || "Apex Global Technologies";
   const companyCode = activeCompany?.code || "APEX-TECH";
   const primaryColor = activeCompany?.primaryColor || "#2563eb";
+  const companyLogo =
+    activeCompany?.logo ||
+    (companyCode === "NFVS" || companyName.toLowerCase().includes("venture")
+      ? "/logos/nfvs-logo.jpg"
+      : companyCode === "NAREE" || companyName.toLowerCase().includes("naree")
+      ? "/logos/naree-logo.jpg"
+      : null);
   const companyInitials = companyName
     .split(" ")
     .slice(0, 2)
@@ -332,12 +339,22 @@ export function Sidebar() {
       {/* Brand & Organization Header */}
       <div className="flex h-14 items-center justify-between px-3.5 border-b border-slate-200 dark:border-slate-800/80">
         <Link href="/app/overview" className="flex items-center gap-2.5 overflow-hidden">
-          <div
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-bold text-sm text-white shadow-md transition-colors"
-            style={{ backgroundColor: primaryColor }}
-          >
-            {companyInitials || "CR"}
-          </div>
+          {companyLogo ? (
+            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white p-0.5 shadow-sm">
+              <img
+                src={companyLogo}
+                alt={companyName}
+                className="h-full w-full object-contain"
+              />
+            </div>
+          ) : (
+            <div
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-bold text-sm text-white shadow-md transition-colors"
+              style={{ backgroundColor: primaryColor }}
+            >
+              {companyInitials || "CR"}
+            </div>
+          )}
           {!collapsed && (
             <div className="flex flex-col truncate">
               <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white truncate">

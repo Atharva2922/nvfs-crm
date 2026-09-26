@@ -55,7 +55,11 @@ export default async function AppOverviewPage() {
                   : "bg-emerald-500/10 border-emerald-500/30 text-emerald-400"
               }`}
             >
-              <Building2 className="h-3.5 w-3.5" />
+              <img
+                src={isVentureStudio ? "/logos/nfvs-logo.jpg" : "/logos/naree-logo.jpg"}
+                alt={companyName}
+                className="h-4 w-4 rounded-full object-contain bg-white p-0.5 border border-slate-300 dark:border-slate-700"
+              />
               <span>{companyName}</span>
             </span>
             <Badge variant="gold" size="sm" className="gap-1">

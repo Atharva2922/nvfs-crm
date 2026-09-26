@@ -125,10 +125,18 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
               className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/90 px-2.5 py-1 text-xs hover:border-blue-400 dark:hover:border-blue-600 transition-colors shadow-xs"
               title="Switch Active Company"
             >
-              <div
-                className="h-2.5 w-2.5 rounded-full shrink-0 animate-pulse"
-                style={{ backgroundColor: primaryColor }}
-              />
+              {(activeCompany?.logo || (activeCompany?.code === "NFVS" ? "/logos/nfvs-logo.jpg" : activeCompany?.code === "NAREE" ? "/logos/naree-logo.jpg" : null)) ? (
+                <img
+                  src={activeCompany?.logo || (activeCompany?.code === "NFVS" ? "/logos/nfvs-logo.jpg" : "/logos/naree-logo.jpg")}
+                  alt={activeCompany?.name || "Company"}
+                  className="h-4 w-4 rounded object-contain shrink-0 bg-white p-0.5 border border-slate-200 dark:border-slate-700"
+                />
+              ) : (
+                <div
+                  className="h-2.5 w-2.5 rounded-full shrink-0 animate-pulse"
+                  style={{ backgroundColor: primaryColor }}
+                />
+              )}
               <div className="flex flex-col text-left">
                 <span className="text-[9px] uppercase tracking-wider text-slate-400 dark:text-slate-500 font-semibold leading-none">
                   {isSuperAdmin ? "Platform Tenant" : "Current Company"}
@@ -153,6 +161,7 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
                 <div className="space-y-0.5 max-h-60 overflow-y-auto">
                   {memberships.map((m) => {
                     const isCurrent = m.companyId === activeCompany?.id;
+                    const mLogo = m.logo || (m.companyCode === "NFVS" ? "/logos/nfvs-logo.jpg" : m.companyCode === "NAREE" ? "/logos/naree-logo.jpg" : null);
                     return (
                       <button
                         key={m.companyId}
@@ -165,10 +174,18 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
                         )}
                       >
                         <div className="flex items-center gap-2 truncate">
-                          <span
-                            className="h-2 w-2 rounded-full shrink-0"
-                            style={{ backgroundColor: m.primaryColor || "#2563eb" }}
-                          />
+                          {mLogo ? (
+                            <img
+                              src={mLogo}
+                              alt={m.companyName}
+                              className="h-5 w-5 rounded object-contain shrink-0 bg-white p-0.5 border border-slate-200 dark:border-slate-700"
+                            />
+                          ) : (
+                            <span
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: m.primaryColor || "#2563eb" }}
+                            />
+                          )}
                           <div className="flex flex-col truncate">
                             <span className="truncate">{m.companyName}</span>
                             <span className="text-[10px] font-mono text-slate-400">
@@ -202,10 +219,18 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
         ) : (
           /* Static Company Context Badge for regular single-company staff */
           <div className="hidden sm:flex items-center gap-1.5 text-xs text-slate-600 dark:text-slate-300 font-medium px-2 py-1 rounded-md bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-            <span
-              className="h-2 w-2 rounded-full shrink-0"
-              style={{ backgroundColor: primaryColor }}
-            />
+            {(activeCompany?.logo || (activeCompany?.code === "NFVS" ? "/logos/nfvs-logo.jpg" : activeCompany?.code === "NAREE" ? "/logos/naree-logo.jpg" : null)) ? (
+              <img
+                src={activeCompany?.logo || (activeCompany?.code === "NFVS" ? "/logos/nfvs-logo.jpg" : "/logos/naree-logo.jpg")}
+                alt={activeCompany?.name || "Company"}
+                className="h-4 w-4 rounded object-contain shrink-0 bg-white p-0.5 border border-slate-200 dark:border-slate-700"
+              />
+            ) : (
+              <span
+                className="h-2 w-2 rounded-full shrink-0"
+                style={{ backgroundColor: primaryColor }}
+              />
+            )}
             <span className="truncate max-w-[140px] font-semibold">{activeCompany?.name}</span>
           </div>
         )}

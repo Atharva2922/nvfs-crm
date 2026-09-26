@@ -56,9 +56,18 @@ export function NareeFoundationDashboard({ user, telemetry }: NareeFoundationDas
                 EUR • PHILANTHROPY & GRANTS
               </span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-              {user.activeCompany?.name || "Naree Foundation"}
-            </h1>
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-md border border-emerald-400/40">
+                <img
+                  src="/logos/naree-logo.jpg"
+                  alt="Naree Foundation Logo"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+                {user.activeCompany?.name || "Naree Foundation"}
+              </h1>
+            </div>
             <p className="text-xs md:text-sm text-emerald-200/80 max-w-2xl leading-relaxed">
               Empowering communities through sustainable health, primary education, female entrepreneurship,
               and emergency disaster relief programs across designated impact regions.

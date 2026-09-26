@@ -58,9 +58,18 @@ export function VentureStudioDashboard({ user, telemetry }: VentureStudioDashboa
                 USD • TECH INCUBATION
               </span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white flex items-center gap-2">
-              {user.activeCompany?.name || "Naree Foundation Venture Studio"}
-            </h1>
+            <div className="flex items-center gap-3">
+              <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-md border border-blue-400/40">
+                <img
+                  src="/logos/nfvs-logo.jpg"
+                  alt="Naree Foundation Venture Studio Logo"
+                  className="h-full w-full object-contain"
+                />
+              </div>
+              <h1 className="text-2xl md:text-3xl font-bold tracking-tight text-white">
+                {user.activeCompany?.name || "Naree Foundation Venture Studio"}
+              </h1>
+            </div>
             <p className="text-xs md:text-sm text-blue-200/80 max-w-2xl leading-relaxed">
               Venture Capital & Technology Incubation Hub. Overseeing high-yield startup incubation,
               cross-platform software architecture, and institutional venture capital deployment.

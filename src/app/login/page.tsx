@@ -95,8 +95,12 @@ export default function LoginPage() {
           {/* Top Brand */}
           <div className="relative z-10 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 via-blue-700 to-indigo-800 font-bold text-white shadow-lg shadow-blue-600/25 border border-blue-400/30">
-                <span className="tracking-tight text-lg">NF</span>
+              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-lg shadow-blue-600/25 border border-blue-400/40">
+                <img
+                  src="/logos/nfvs-logo.jpg"
+                  alt="Naree Foundation Venture Studio"
+                  className="h-full w-full object-contain"
+                />
               </div>
               <div>
                 <span className="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
@@ -218,8 +222,12 @@ export default function LoginPage() {
           {/* Mobile Top Header */}
           <div className="flex items-center justify-between lg:hidden mb-8">
             <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600 font-bold text-white shadow-md">
-                NF
+              <div className="relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-white p-0.5 shadow-md border border-slate-700">
+                <img
+                  src="/logos/nfvs-logo.jpg"
+                  alt="Naree Foundation Venture Studio"
+                  className="h-full w-full object-contain"
+                />
               </div>
               <span className="text-sm font-bold text-white tracking-tight">
                 CRM + NFVS Enterprise
