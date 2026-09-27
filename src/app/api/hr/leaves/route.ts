@@ -69,8 +69,11 @@ export async function GET(req: NextRequest) {
       return successResponse({ requests: teamRequests });
     }
 
+    const companyId = user.activeCompany?.id || user.employee?.organizationId;
+
     // 3. All Organization scope (HR, CEO, Super Admin)
     const allRequests = await db.leaveRequest.findMany({
+      where: companyId ? { employee: { organizationId: companyId } } : {},
       take: 100,
       orderBy: { createdAt: "desc" },
       include: {
@@ -91,6 +94,7 @@ export async function GET(req: NextRequest) {
     });
 
     const policies = await db.leavePolicy.findMany({
+      where: companyId ? { organizationId: companyId } : {},
       orderBy: { code: "asc" },
       include: {
         _count: { select: { leaveRequests: true } },

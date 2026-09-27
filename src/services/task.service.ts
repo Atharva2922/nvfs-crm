@@ -61,6 +61,12 @@ export interface TaskQueryFilters {
 }
 
 export class TaskService {
+  static getOrgId(user: AuthenticatedUser): string {
+    const id = user.activeCompany?.id || user.employee?.organizationId;
+    if (!id && user.roleCode !== "SUPER_ADMIN") throw new Error("Authenticated user has no associated organization");
+    return id || "";
+  }
+
   /**
    * Helper: check if a user is an executive with global task visibility
    */
@@ -204,16 +210,17 @@ export class TaskService {
       throw new Error("Authenticated user has no employee profile");
     }
 
-    const orgId = user.employee?.organizationId;
+    const orgId = this.getOrgId(user);
     const empId = user.employee?.id;
     const isSuperAdmin = user.roleCode === "SUPER_ADMIN";
     const isExec = this.isExecutive(user);
     const isDeptHead = user.roleCode === "DEPARTMENT_HEAD";
 
     const where: any = {};
-    if (orgId && !filters.departmentId) {
+    if (orgId && !isSuperAdmin) {
       where.organizationId = orgId;
-    } else if (filters.departmentId && filters.departmentId !== "ALL") {
+    }
+    if (filters.departmentId && filters.departmentId !== "ALL") {
       where.departmentId = filters.departmentId;
     }
 
@@ -431,7 +438,8 @@ export class TaskService {
     });
 
     if (!task) throw new Error("Task not found");
-    if (user.roleCode !== "SUPER_ADMIN" && task.organizationId !== user.employee?.organizationId) {
+    const userOrgId = this.getOrgId(user);
+    if (user.roleCode !== "SUPER_ADMIN" && task.organizationId !== userOrgId) {
       throw new Error("Unauthorized: Task belongs to another organization");
     }
 
@@ -460,7 +468,7 @@ export class TaskService {
 
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
-    const orgId = user.employee.organizationId;
+    const orgId = this.getOrgId(user);
     const creatorId = user.employee.id;
 
     // Validate assignee if provided
@@ -563,7 +571,8 @@ export class TaskService {
     });
 
     if (!existing) throw new Error("Task not found");
-    if (existing.organizationId !== user.employee.organizationId) {
+    const userOrgId = this.getOrgId(user);
+    if (existing.organizationId !== userOrgId) {
       throw new Error("Unauthorized");
     }
 
@@ -694,7 +703,8 @@ export class TaskService {
     });
 
     if (!task) throw new Error("Task not found");
-    if (task.organizationId !== user.employee.organizationId) {
+    const userOrgId = this.getOrgId(user);
+    if (task.organizationId !== userOrgId) {
       throw new Error("Unauthorized");
     }
 

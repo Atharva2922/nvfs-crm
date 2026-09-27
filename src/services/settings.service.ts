@@ -137,17 +137,25 @@ export class SettingsService {
   /**
    * Retrieves all system settings as a key-value dictionary and categorized list.
    */
-  static async getAllSettings() {
+  static async getAllSettings(organizationId?: string) {
     await this.seedDefaults();
 
     const [settingsList, org, userCount, activeSessionCount] = await Promise.all([
       db.systemSetting.findMany({ orderBy: { key: "asc" } }),
-      db.organization.findFirst({
-        include: {
-          departments: true,
-          _count: { select: { employees: true } },
-        },
-      }),
+      organizationId
+        ? db.organization.findUnique({
+            where: { id: organizationId },
+            include: {
+              departments: true,
+              _count: { select: { employees: true } },
+            },
+          })
+        : db.organization.findFirst({
+            include: {
+              departments: true,
+              _count: { select: { employees: true } },
+            },
+          }),
       db.user.count(),
       db.user.count({ where: { isActive: true } }),
     ]);

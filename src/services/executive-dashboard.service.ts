@@ -116,8 +116,8 @@ export class ExecutiveDashboardService {
     if (!this.isChairpersonAuthorized(user)) {
       throw new Error("UNAUTHORIZED: Access restricted to Chairperson & Board Leadership");
     }
-    if (!user.employee) throw new Error("No organization profile associated");
-    const orgId = user.employee.organizationId;
+    const orgId = user.activeCompany?.id || user.employee?.organizationId;
+    if (!orgId) throw new Error("No organization profile associated");
     const now = new Date();
     const { currentStart, currentEnd, prevStart, prevEnd } = this.calculateDateWindows(filters);
 
@@ -205,7 +205,7 @@ export class ExecutiveDashboardService {
     const strategicCommitments = strategicProjects.reduce((sum, p) => sum + (p.approvedBudget || 0), 0);
 
     return {
-      organizationName: user.employee.organizationName,
+      organizationName: user.activeCompany?.name || user.employee?.organizationName || "Enterprise",
       asOf: now.toISOString(),
       filters,
       kpis: {
@@ -271,8 +271,8 @@ export class ExecutiveDashboardService {
     if (!this.isCtoAuthorized(user)) {
       throw new Error("UNAUTHORIZED: Access restricted to CTO & Engineering leadership");
     }
-    if (!user.employee) throw new Error("No organization profile associated");
-    const orgId = user.employee.organizationId;
+    const orgId = user.activeCompany?.id || user.employee?.organizationId;
+    if (!orgId) throw new Error("No organization profile associated");
     const now = new Date();
     const { currentStart, currentEnd } = this.calculateDateWindows(filters);
 
@@ -351,7 +351,7 @@ export class ExecutiveDashboardService {
     const techSpend = techExpenses.reduce((sum, e) => sum + e.amount, 0);
 
     return {
-      organizationName: user.employee.organizationName,
+      organizationName: user.activeCompany?.name || user.employee?.organizationName || "Enterprise",
       asOf: now.toISOString(),
       filters,
       kpis: {
@@ -414,8 +414,8 @@ export class ExecutiveDashboardService {
     if (!this.isCmoAuthorized(user)) {
       throw new Error("UNAUTHORIZED: Access restricted to CMO & Commercial leadership");
     }
-    if (!user.employee) throw new Error("No organization profile associated");
-    const orgId = user.employee.organizationId;
+    const orgId = user.activeCompany?.id || user.employee?.organizationId;
+    if (!orgId) throw new Error("No organization profile associated");
     const now = new Date();
     const { currentStart, currentEnd } = this.calculateDateWindows(filters);
 
@@ -511,7 +511,7 @@ export class ExecutiveDashboardService {
       .slice(0, 6);
 
     return {
-      organizationName: user.employee.organizationName,
+      organizationName: user.activeCompany?.name || user.employee?.organizationName || "Enterprise",
       asOf: now.toISOString(),
       filters,
       kpis: {
@@ -544,8 +544,8 @@ export class ExecutiveDashboardService {
     if (!this.isCfoAuthorized(user)) {
       throw new Error("UNAUTHORIZED: Access restricted to CFO & Financial leadership");
     }
-    if (!user.employee) throw new Error("No organization profile associated");
-    const orgId = user.employee.organizationId;
+    const orgId = user.activeCompany?.id || user.employee?.organizationId;
+    if (!orgId) throw new Error("No organization profile associated");
     const now = new Date();
     const { currentStart, currentEnd } = this.calculateDateWindows(filters);
 
@@ -617,7 +617,7 @@ export class ExecutiveDashboardService {
       .slice(0, 6);
 
     return {
-      organizationName: user.employee.organizationName,
+      organizationName: user.activeCompany?.name || user.employee?.organizationName || "Enterprise",
       asOf: now.toISOString(),
       filters,
       kpis: {

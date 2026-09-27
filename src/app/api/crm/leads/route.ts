@@ -20,7 +20,7 @@ const createLeadSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
 
     const { searchParams } = new URL(req.url);
     const filters = {
@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    if (!user) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
 
     const body = await req.json();
     const parse = createLeadSchema.safeParse(body);

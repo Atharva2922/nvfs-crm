@@ -100,6 +100,17 @@ model Organization {
   aiConfiguration      AIConfiguration?
   aiUsageLogs          AIUsageLog[]
 
+  // Dedicated Accounts & Double-Entry Accounting
+  accounts             Account[]
+  journalEntries       JournalEntry[]
+  bankAccounts         BankAccount[]
+  estimates            Estimate[]
+  salesOrders          SalesOrder[]
+  creditNotes          CreditNote[]
+  vendorCredits        VendorCredit[]
+  taxRates             TaxRate[]
+  accountingSetting    AccountingSetting?
+
   @@index([code])
 }
 
@@ -1123,6 +1134,9 @@ model Client {
   legalCases      LegalCase[]
   legalContacts   LegalContact[]
   onDutyAssignments OnDutyAssignment[]
+  estimates       Estimate[]
+  salesOrders     SalesOrder[]
+  creditNotes     CreditNote[]
 
   @@unique([organizationId, code])
   @@index([organizationId])
@@ -1819,6 +1833,7 @@ model Vendor {
   legalContracts         LegalContract[]
   legalCases             LegalCase[]
   legalContacts          LegalContact[]
+  vendorCredits          VendorCredit[]
 
   @@unique([organizationId, vendorCode])
   @@index([organizationId])
@@ -3215,6 +3230,262 @@ model AIUsageLog {
   @@index([feature])
   @@index([createdAt])
 }
+
+// ==========================================
+// 77. ACCOUNTS & DOUBLE-ENTRY LEDGER SYSTEM
+// ==========================================
+
+model Account {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  code           String       // e.g. "1010", "1020", "2010", "4010"
+  name           String       // e.g. "Cash On Hand", "Operating Bank", "Accounts Receivable"
+  type           String       // ASSET, LIABILITY, EQUITY, INCOME, EXPENSE
+  subcategory    String       // CURRENT_ASSET, BANK, FIXED_ASSET, CURRENT_LIABILITY, TAX_PAYABLE, EQUITY, OPERATING_REVENUE, DIRECT_EXPENSE, OPERATING_EXPENSE
+  currency       String       @default("INR")
+  balance        Float        @default(0.0)
+  description    String?
+  isSystem       Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  journalLines   JournalLine[]
+  bankAccount    BankAccount?
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+  @@index([type])
+  @@index([subcategory])
+}
+
+model JournalEntry {
+  id             String        @id @default(cuid())
+  organizationId String
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  entryNumber    String        // e.g. "JRN-2026-0001"
+  date           DateTime      @default(now())
+  reference      String?       // External ref or invoice/bill #
+  sourceType     String        @default("MANUAL") // MANUAL, INVOICE, BILL, PAYMENT, EXPENSE, BANK_TRANSFER, OPENING_BALANCE
+  sourceId       String?
+  notes          String?
+  totalAmount    Float         @default(0.0) // Debit sum = Credit sum
+  status         String        @default("POSTED") // DRAFT, POSTED, VOID
+  createdById    String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  lines          JournalLine[]
+
+  @@unique([organizationId, entryNumber])
+  @@index([organizationId])
+  @@index([date])
+  @@index([sourceType])
+  @@index([status])
+}
+
+model JournalLine {
+  id             String       @id @default(cuid())
+  journalEntryId String
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  accountId      String
+  account        Account      @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  type           String       // DEBIT, CREDIT
+  amount         Float        // Positive absolute amount
+  description    String?
+  entityType     String?      // CLIENT, VENDOR, EMPLOYEE
+  entityId       String?
+
+  @@index([journalEntryId])
+  @@index([accountId])
+  @@index([type])
+}
+
+model BankAccount {
+  id               String            @id @default(cuid())
+  organizationId   String
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  accountId        String?           @unique
+  account          Account?          @relation(fields: [accountId], references: [id], onDelete: SetNull)
+  accountName      String            // e.g. "Main Corporate Current Account"
+  bankName         String            // e.g. "HDFC Bank", "ICICI Bank"
+  accountNumber    String            // Masked or complete number
+  accountType      String            @default("CURRENT") // CURRENT, SAVINGS, CREDIT_CARD, CASH
+  currency         String            @default("INR")
+  currentBalance   Float             @default(0.0)
+  availableBalance Float             @default(0.0)
+  ifscOrSwift      String?
+  branchName       String?
+  isDefault        Boolean           @default(false)
+  lastSyncedAt     DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+
+  transactions     BankTransaction[]
+
+  @@index([organizationId])
+  @@index([accountType])
+}
+
+model BankTransaction {
+  id            String      @id @default(cuid())
+  bankAccountId String
+  bankAccount   BankAccount @relation(fields: [bankAccountId], references: [id], onDelete: Cascade)
+  date          DateTime    @default(now())
+  type          String      // DEPOSIT, WITHDRAWAL, TRANSFER
+  amount        Float
+  payeeOrPayer  String?
+  reference     String?
+  description   String?
+  status        String      @default("UNRECONCILED") // UNRECONCILED, RECONCILED, EXCLUDED
+  reconciledAt  DateTime?
+  createdAt     DateTime    @default(now())
+
+  @@index([bankAccountId])
+  @@index([status])
+  @@index([date])
+}
+
+model Estimate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  estimateNumber String       // e.g. "EST-2026-0001"
+  clientId       String
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  date           DateTime     @default(now())
+  expiryDate     DateTime
+  subtotal       Float        @default(0.0)
+  taxAmount      Float        @default(0.0)
+  discountAmount Float        @default(0.0)
+  total          Float        @default(0.0)
+  status         String       @default("SENT") // DRAFT, SENT, ACCEPTED, DECLINED, CONVERTED, EXPIRED
+  notes          String?
+  terms          String?
+  items          String?      // JSON stringified items
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, estimateNumber])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model SalesOrder {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  orderNumber    String       // e.g. "SO-2026-0001"
+  clientId       String
+  client         Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  date           DateTime     @default(now())
+  deliveryDate   DateTime?
+  subtotal       Float        @default(0.0)
+  taxAmount      Float        @default(0.0)
+  total          Float        @default(0.0)
+  status         String       @default("CONFIRMED") // DRAFT, CONFIRMED, SHIPPED, INVOICED, CANCELLED
+  notes          String?
+  items          String?      // JSON stringified items
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, orderNumber])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model CreditNote {
+  id               String       @id @default(cuid())
+  organizationId   String
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creditNoteNumber String       // e.g. "CN-2026-0001"
+  clientId         String
+  client           Client       @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  invoiceId        String?
+  date             DateTime     @default(now())
+  amount           Float        @default(0.0)
+  balance          Float        @default(0.0)
+  status           String       @default("OPEN") // OPEN, CLOSED, VOID
+  reason           String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  @@unique([organizationId, creditNoteNumber])
+  @@index([organizationId])
+  @@index([clientId])
+  @@index([status])
+}
+
+model VendorCredit {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creditNumber   String       // e.g. "VC-2026-0001"
+  vendorId       String
+  vendor         Vendor       @relation(fields: [vendorId], references: [id], onDelete: Cascade)
+  date           DateTime     @default(now())
+  amount         Float        @default(0.0)
+  balance        Float        @default(0.0)
+  status         String       @default("OPEN") // OPEN, CLOSED, VOID
+  reason         String?
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, creditNumber])
+  @@index([organizationId])
+  @@index([vendorId])
+  @@index([status])
+}
+
+model TaxRate {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  name           String       // e.g. "GST 18%", "GST 5%", "IGST 18%"
+  code           String       // e.g. "GST_18", "GST_5"
+  rate           Float        // e.g. 18.0
+  type           String       @default("GST") // GST, IGST, CGST, SGST, VAT, CUSTOM
+  cgst           Float        @default(0.0)
+  sgst           Float        @default(0.0)
+  igst           Float        @default(0.0)
+  isDefault      Boolean      @default(false)
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  @@unique([organizationId, code])
+  @@index([organizationId])
+}
+
+model AccountingSetting {
+  id                   String       @id @default(cuid())
+  organizationId       String       @unique
+  organization         Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  fiscalYearStart      String       @default("APR-MAR") // APR-MAR or JAN-DEC
+  accountingMethod     String       @default("ACCRUAL") // ACCRUAL or CASH
+  defaultCurrency      String       @default("INR")
+  gstin                String?
+  pan                  String?
+  legalTradeName       String?
+  state                String?
+  stateCode            String?
+  compositionScheme    Boolean      @default(false)
+  reverseChargeEnabled Boolean      @default(false)
+  invoicePrefix        String       @default("INV-")
+  billPrefix           String       @default("BILL-")
+  estimatePrefix       String       @default("EST-")
+  journalPrefix        String       @default("JRN-")
+  paymentTerms         String       @default("NET_30")
+  autoLockPeriod       DateTime?
+  createdAt            DateTime     @default(now())
+  updatedAt            DateTime     @updatedAt
+
+  @@index([organizationId])
+}
+
 
 
 

@@ -40,6 +40,12 @@ export interface ClientQueryFilters {
 }
 
 export class ClientService {
+  static getOrgId(user: AuthenticatedUser): string {
+    const id = user.activeCompany?.id || user.employee?.organizationId;
+    if (!id) throw new Error("Authenticated user has no associated organization");
+    return id;
+  }
+
   static isExecutive(user: AuthenticatedUser): boolean {
     const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CFO", "CMO"];
     return execRoles.includes(user.roleCode);
@@ -49,8 +55,6 @@ export class ClientService {
    * Scoped client directory retrieval with multi-filtering, sorting, and pagination
    */
   static async getClients(user: AuthenticatedUser, filters: ClientQueryFilters = {}) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-
     // Secure hierarchical scoping
     const scopedWhere = await buildCrmScopeFilter(user, {
       entityOwnerField: "ownerId",
@@ -196,13 +200,14 @@ export class ClientService {
       },
     });
 
+    const userOrgId = this.getOrgId(user);
     if (!client) throw new Error("Client not found");
-    if (client.organizationId !== user.employee.organizationId) {
+    if (client.organizationId !== userOrgId) {
       throw new Error("Unauthorized: Client belongs to another organization");
     }
 
     // Permission check for standard staff
-    if (!this.isExecutive(user) && user.roleCode !== "DEPARTMENT_HEAD" && client.ownerId !== user.employee.id) {
+    if (!this.isExecutive(user) && user.roleCode !== "DEPARTMENT_HEAD" && user.employee && client.ownerId !== user.employee.id) {
       throw new Error("Access Denied: You do not have permission to view this client account");
     }
 
@@ -255,9 +260,7 @@ export class ClientService {
    * Create new client with duplicate detection
    */
   static async createClient(user: AuthenticatedUser, data: CreateClientInput) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-
-    const orgId = user.employee.organizationId;
+    const orgId = this.getOrgId(user);
     const normalizedName = data.name.trim().toLowerCase();
 
     // Check for potential duplicate account
@@ -293,11 +296,13 @@ export class ClientService {
         taxId: data.taxId || null,
         status: data.status || "PROSPECT",
         tier: data.tier || "MID_MARKET",
-        ownerId: data.ownerId || user.employee.id,
+        ownerId: data.ownerId || user.employee?.id || user.id,
         annualRevenue: data.annualRevenue || null,
         notes: data.notes || null,
       },
     });
+
+    const actorName = user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : (user.email.split("@")[0] || "User");
 
     // Record initial activity
     await db.crmActivity.create({
@@ -306,8 +311,8 @@ export class ClientService {
         clientId: client.id,
         type: "STATUS_CHANGE",
         subject: "Client Account Provisioned",
-        description: `Account created by ${user.employee.firstName} ${user.employee.lastName}. Status: ${client.status}`,
-        performedById: user.employee.id,
+        description: `Account created by ${actorName}. Status: ${client.status}`,
+        performedById: user.employee?.id || user.id,
       },
     });
 
@@ -321,7 +326,7 @@ export class ClientService {
     });
 
     // Notify assigned owner if not self
-    if (client.ownerId && client.ownerId !== user.employee.id) {
+    if (client.ownerId && client.ownerId !== user.employee?.id) {
       try {
         const ownerEmp = await db.employee.findUnique({
           where: { id: client.ownerId },
@@ -352,11 +357,11 @@ export class ClientService {
    * Update client details
    */
   static async updateClient(clientId: string, user: AuthenticatedUser, data: Partial<CreateClientInput>) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const existing = await db.client.findUnique({ where: { id: clientId } });
     if (!existing) throw new Error("Client not found");
-    if (existing.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+    if (existing.organizationId !== userOrgId) throw new Error("Unauthorized");
 
     const updated = await db.client.update({
       where: { id: clientId },
@@ -374,7 +379,7 @@ export class ClientService {
     });
 
     // Notify new owner if reassigned
-    if (data.ownerId && data.ownerId !== existing.ownerId && data.ownerId !== user.employee.id) {
+    if (data.ownerId && data.ownerId !== existing.ownerId && data.ownerId !== user.employee?.id) {
       try {
         const ownerEmp = await db.employee.findUnique({
           where: { id: data.ownerId },
@@ -405,14 +410,14 @@ export class ClientService {
    * Archive / deactivate client account
    */
   static async archiveClient(clientId: string, user: AuthenticatedUser) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const existing = await db.client.findUnique({ where: { id: clientId } });
     if (!existing) throw new Error("Client not found");
-    if (existing.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+    if (existing.organizationId !== userOrgId) throw new Error("Unauthorized");
 
     const isExec = this.isExecutive(user);
-    if (!isExec && user.roleCode !== "DEPARTMENT_HEAD" && existing.ownerId !== user.employee.id) {
+    if (!isExec && user.roleCode !== "DEPARTMENT_HEAD" && user.employee && existing.ownerId !== user.employee.id) {
       throw new Error("Forbidden: You do not have permission to archive this client");
     }
 
@@ -421,14 +426,15 @@ export class ClientService {
       data: { status: "INACTIVE" },
     });
 
+    const actorName = user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : (user.email.split("@")[0] || "User");
     await db.crmActivity.create({
       data: {
         organizationId: existing.organizationId,
         clientId,
         type: "STATUS_CHANGE",
         subject: "Client Account Deactivated / Archived",
-        description: `Status changed to INACTIVE by ${user.employee.firstName} ${user.employee.lastName}`,
-        performedById: user.employee.id,
+        description: `Status changed to INACTIVE by ${actorName}`,
+        performedById: user.employee?.id || user.id,
       },
     });
 
@@ -458,11 +464,11 @@ export class ClientService {
     isPrimary?: boolean;
     notes?: string;
   }) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const client = await db.client.findUnique({ where: { id: clientId } });
     if (!client) throw new Error("Client not found");
-    if (client.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+    if (client.organizationId !== userOrgId) throw new Error("Unauthorized");
 
     // If marked as primary, demote existing primary contacts
     if (data.isPrimary) {
@@ -494,7 +500,7 @@ export class ClientService {
         type: "NOTE",
         subject: `New Contact Added: ${contact.firstName} ${contact.lastName}`,
         description: `Designation: ${contact.designation || "N/A"}, Email: ${contact.email}`,
-        performedById: user.employee.id,
+        performedById: user.employee?.id || user.id,
       },
     });
 
@@ -523,14 +529,14 @@ export class ClientService {
     isPrimary?: boolean;
     notes?: string | null;
   }) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const existing = await db.contact.findUnique({
       where: { id: contactId },
       include: { client: true },
     });
     if (!existing) throw new Error("Contact not found");
-    if (existing.client.organizationId !== user.employee.organizationId) {
+    if (existing.client.organizationId !== userOrgId) {
       throw new Error("Unauthorized");
     }
 
@@ -563,14 +569,14 @@ export class ClientService {
    * Delete contact
    */
   static async deleteContact(contactId: string, user: AuthenticatedUser) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const existing = await db.contact.findUnique({
       where: { id: contactId },
       include: { client: true },
     });
     if (!existing) throw new Error("Contact not found");
-    if (existing.client.organizationId !== user.employee.organizationId) {
+    if (existing.client.organizationId !== userOrgId) {
       throw new Error("Unauthorized");
     }
 
@@ -598,11 +604,11 @@ export class ClientService {
     opportunityId?: string;
     metadata?: string | null;
   }) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const client = await db.client.findUnique({ where: { id: clientId } });
     if (!client) throw new Error("Client not found");
-    if (client.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+    if (client.organizationId !== userOrgId) throw new Error("Unauthorized");
 
     const activity = await db.crmActivity.create({
       data: {
@@ -613,7 +619,7 @@ export class ClientService {
         subject: data.subject,
         description: data.description || null,
         metadata: data.metadata || null,
-        performedById: user.employee.id,
+        performedById: user.employee?.id || user.id,
         performedAt: new Date(),
       },
       include: {

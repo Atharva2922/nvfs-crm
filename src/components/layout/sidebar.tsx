@@ -37,6 +37,7 @@ import {
   UserPlus,
   ShieldCheck,
   GitBranch,
+  Landmark,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 
@@ -99,7 +100,10 @@ export function Sidebar() {
   const isFinStaff =
     deptCode === "FIN" ||
     deptName.includes("finance") ||
+    deptName.includes("account") ||
     designation.includes("finance") ||
+    designation.includes("accountant") ||
+    designation.includes("accounts") ||
     userEmail.startsWith("finance");
 
   const isMktStaff =
@@ -140,6 +144,7 @@ export function Sidebar() {
         { title: "CRM & Customers", href: "/app/crm", icon: Briefcase },
         { title: "Operations & Delivery", href: "/app/operations", icon: Layers },
         { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
+        { title: "Accounts & Books", href: "/app/accounts", icon: Landmark },
         { title: "Payroll Master", href: "/app/payroll", icon: FileCheck },
         { title: "Products & Inventory", href: "/app/inventory", icon: Package },
       ],
@@ -175,6 +180,7 @@ export function Sidebar() {
         ...(role === "CHAIRPERSON"
           ? [{ title: "Chairperson Oversight", href: "/app/dashboard/chairperson", icon: Building }]
           : []),
+        { title: "Accounts & Books", href: "/app/accounts", icon: Landmark },
         { title: "Org Hierarchy Tree", href: "/app/hr/hierarchy", icon: GitBranch },
         { title: "Executive Approvals", href: "/app/approvals", icon: ShieldCheck },
         { title: "Company People", href: "/app/people", icon: Users },
@@ -220,6 +226,7 @@ export function Sidebar() {
       groupName: "FINANCE & TREASURY",
       items: [
         { title: "CFO Treasury Center", href: "/app/dashboard/cfo", icon: IndianRupee },
+        { title: "Accounts & Books", href: "/app/accounts", icon: Landmark },
         { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
         { title: "Payroll Operations", href: "/app/payroll", icon: FileCheck },
         { title: "Financial Approvals", href: "/app/approvals", icon: ShieldCheck },
@@ -267,6 +274,7 @@ export function Sidebar() {
       navGroups.push({
         groupName: "FINANCE TEAM",
         items: [
+          { title: "Accounts & Books", href: "/app/accounts", icon: Landmark },
           { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
           { title: "Financial Tasks", href: "/app/tasks", icon: CheckSquare },
         ],

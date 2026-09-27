@@ -59,6 +59,12 @@ export function invalidateLeadCache(organizationId?: string) {
 }
 
 export class LeadService {
+  static getOrgId(user: AuthenticatedUser): string {
+    const id = user.activeCompany?.id || user.employee?.organizationId;
+    if (!id) throw new Error("Authenticated user has no associated organization");
+    return id;
+  }
+
   static isExecutive(user: AuthenticatedUser): boolean {
     const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CFO", "CMO"];
     return execRoles.includes(user.roleCode);
@@ -84,9 +90,7 @@ export class LeadService {
       sortOrder?: "asc" | "desc";
     } = {}
   ) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-
-    const orgId = user.employee.organizationId;
+    const orgId = this.getOrgId(user);
     const filterKey = JSON.stringify(filters);
     const cacheKey = `${orgId}:${user.id}:${filterKey}`;
     const cached = leadQueryCache.get(cacheKey);
@@ -238,8 +242,9 @@ export class LeadService {
       },
     });
 
+    const userOrgId = this.getOrgId(user);
     if (!lead) throw new Error("Lead not found");
-    if (lead.organizationId !== user.employee.organizationId) {
+    if (lead.organizationId !== userOrgId) {
       throw new Error("Unauthorized: Lead belongs to another organization");
     }
 
@@ -250,10 +255,8 @@ export class LeadService {
    * Capture a new prospect lead
    */
   static async createLead(user: AuthenticatedUser, data: CreateLeadInput) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-
-    const orgId = user.employee.organizationId;
-    const ownerId = data.ownerId || user.employee.id;
+    const orgId = this.getOrgId(user);
+    const ownerId = data.ownerId || user.employee?.id || user.id;
 
     const lead = await db.lead.create({
       data: {
@@ -281,7 +284,7 @@ export class LeadService {
         type: "NOTE",
         subject: "Inbound Lead Captured",
         description: `Source: ${lead.source}. Initial estimated value: ₹${lead.estimatedValue || 0}`,
-        performedById: user.employee.id,
+        performedById: user.employee?.id || user.id,
       },
     });
 
@@ -333,7 +336,8 @@ export class LeadService {
       include: { owner: true },
     });
     if (!existing) throw new Error("Lead not found");
-    if (existing.organizationId !== user.employee.organizationId) {
+    const userOrgId = this.getOrgId(user);
+    if (existing.organizationId !== userOrgId) {
       throw new Error("Unauthorized");
     }
     if ((existing.status as string) === "CONVERTED" && data.status && data.status !== "CONVERTED") {
@@ -431,7 +435,8 @@ export class LeadService {
 
     const lead = await db.lead.findUnique({ where: { id: leadId } });
     if (!lead) throw new Error("Lead not found");
-    if (lead.organizationId !== user.employee.organizationId) {
+    const userOrgId = this.getOrgId(user);
+    if (lead.organizationId !== userOrgId) {
       throw new Error("Unauthorized");
     }
 
@@ -452,7 +457,7 @@ export class LeadService {
       metadata: { source: "lead_service" },
     });
 
-    invalidateLeadCache(user.employee.organizationId);
+    invalidateLeadCache(userOrgId);
     return { success: true, id: leadId };
   }
 
@@ -472,11 +477,11 @@ export class LeadService {
    * Convert Lead into Client, Contact, and Opportunity with Duplicate Account Prevention
    */
   static async convertLead(leadId: string, user: AuthenticatedUser, options: ConvertLeadOptions = {}) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
+    const userOrgId = this.getOrgId(user);
 
     const lead = await db.lead.findUnique({ where: { id: leadId } });
     if (!lead) throw new Error("Lead not found");
-    if (lead.organizationId !== user.employee.organizationId) throw new Error("Unauthorized");
+    if (lead.organizationId !== userOrgId) throw new Error("Unauthorized");
     if (lead.status === "CONVERTED") throw new Error("This lead is already converted.");
 
     const orgId = lead.organizationId;
@@ -521,7 +526,7 @@ export class LeadService {
             phone: lead.phone || null,
             status: "ACTIVE",
             tier: "MID_MARKET",
-            ownerId: lead.ownerId || user.employee.id,
+            ownerId: lead.ownerId || user.employee?.id || user.id,
             notes: `Converted from lead ${lead.firstName} ${lead.lastName}. Source: ${lead.source}`,
           },
           select: { id: true, name: true, code: true },
@@ -563,7 +568,7 @@ export class LeadService {
           organizationId: orgId,
           clientId: client.id,
           contactId: contact.id,
-          ownerId: lead.ownerId || user.employee.id,
+          ownerId: lead.ownerId || user.employee?.id || user.id,
           name: dealName,
           value: dealValue,
           stage: "DISCOVERY",
@@ -597,7 +602,7 @@ export class LeadService {
         type: "STATUS_CHANGE",
         subject: `Lead Converted: ${lead.firstName} ${lead.lastName}`,
         description: `Successfully converted into Account "${client.name}" (${client.code})${opportunity ? ` with open deal "${opportunity.name}" (₹${opportunity.value.toLocaleString()})` : ""}.`,
-        performedById: user.employee.id,
+        performedById: user.employee?.id || user.id,
         performedAt: new Date(),
       },
     });

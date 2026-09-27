@@ -6,6 +6,8 @@ import { Header } from "./header";
 import { SystemRoleCode, AuthenticatedUser } from "@/types";
 import { AuthProvider } from "@/components/providers/auth-provider";
 
+import { usePathname } from "next/navigation";
+
 export interface AppShellProps {
   children: React.ReactNode;
   userRole?: SystemRoleCode;
@@ -14,6 +16,16 @@ export interface AppShellProps {
 
 export function AppShell({ children, initialUser }: AppShellProps) {
   const [currentRole, setCurrentRole] = useState<SystemRoleCode>(initialUser?.roleCode || "SUPER_ADMIN");
+  const pathname = usePathname();
+  const isAccountsModule = pathname?.startsWith("/app/accounts");
+
+  if (isAccountsModule) {
+    return (
+      <AuthProvider initialUser={initialUser || null}>
+        {children}
+      </AuthProvider>
+    );
+  }
 
   return (
     <AuthProvider initialUser={initialUser || null}>

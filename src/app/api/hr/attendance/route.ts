@@ -36,8 +36,10 @@ export async function GET(req: NextRequest) {
       });
     }
 
+    const companyId = user.activeCompany?.id || user.employee?.organizationId;
+
     if (isOverview) {
-      const overview = await AttendanceService.getTodayOverview();
+      const overview = await AttendanceService.getTodayOverview(companyId);
       return successResponse({
         ...overview,
         myTodayRecord,
@@ -46,6 +48,9 @@ export async function GET(req: NextRequest) {
 
     // Filtered attendance records query
     const whereClause: any = {};
+    if (companyId) {
+      whereClause.employee = { organizationId: companyId };
+    }
     if (employeeId) {
       whereClause.employeeId = employeeId;
     } else if (searchParams.get("scope") === "my" && user.employee) {

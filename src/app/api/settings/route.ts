@@ -9,7 +9,8 @@ export async function GET() {
     const user = await getCurrentUser();
     if (!user) return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
 
-    const data = await SettingsService.getAllSettings();
+    const orgId = user.activeCompany?.id || user.employee?.organizationId;
+    const data = await SettingsService.getAllSettings(orgId);
     return successResponse(data);
   } catch (error: any) {
     console.error("[Settings GET Error]:", error);
@@ -39,7 +40,10 @@ export async function PATCH(req: NextRequest) {
 
     // Organization details update if provided and authorized
     if (organization && isExecutiveOrAdmin) {
-      const currentOrg = await db.organization.findFirst();
+      const targetOrgId = user.activeCompany?.id || user.employee?.organizationId;
+      const currentOrg = targetOrgId
+        ? await db.organization.findUnique({ where: { id: targetOrgId } })
+        : await db.organization.findFirst();
       if (currentOrg) {
         await db.organization.update({
           where: { id: currentOrg.id },

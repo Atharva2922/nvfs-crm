@@ -103,12 +103,21 @@ export default function MyDocumentsPage() {
                 <span className="text-[10px] text-slate-400 font-mono">
                   Updated: {new Date(doc.updatedAt).toLocaleDateString()}
                 </span>
-                <button
-                  onClick={() => alert(`Accessing document: ${doc.title}`)}
-                  className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-amber-400 hover:underline"
-                >
-                  <Download className="h-3 w-3" /> View / Download
-                </button>
+                {doc.category === "POLICY" ? (
+                  <a
+                    href="/app/policies"
+                    className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <BookOpen className="h-3 w-3" /> View Policy
+                  </a>
+                ) : (
+                  <button
+                    onClick={() => window.print()}
+                    className="flex items-center gap-1 text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline"
+                  >
+                    <Download className="h-3 w-3" /> Print / Save
+                  </button>
+                )}
               </div>
             </div>
           ))}

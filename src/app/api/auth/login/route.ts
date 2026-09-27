@@ -74,12 +74,32 @@ export async function POST(req: NextRequest) {
       userAgent: req.headers.get("user-agent") || "Browser",
     });
 
+    const designation = (user.employee?.designation || "").trim().toLowerCase();
+    const isAccountant =
+      designation.includes("accountant") ||
+      designation.includes("accounts") ||
+      (user.roleCode as string) === "ACCOUNTANT";
+
     const targetDashboard =
-      user.roleCode === "SUPER_ADMIN"
+      isAccountant
+        ? "/app/accounts"
+        : user.roleCode === "SUPER_ADMIN"
         ? "/app/super-admin"
+        : user.roleCode === "ADMIN"
+        ? "/app/dashboard/admin"
+        : user.roleCode === "CEO" || user.roleCode === "CHAIRPERSON"
+        ? "/app/dashboard/ceo"
+        : user.roleCode === "CFO"
+        ? "/app/dashboard/cfo"
+        : user.roleCode === "COO"
+        ? "/app/dashboard/coo"
+        : user.roleCode === "CTO" || user.roleCode === "CIO"
+        ? "/app/dashboard/cto"
+        : user.roleCode === "CMO"
+        ? "/app/dashboard/cmo"
         : user.roleCode === "HR"
         ? "/app/dashboard/hr"
-        : "/app/dashboard/ceo";
+        : "/app/overview";
     return successResponse({ ...user, targetDashboard });
   } catch (error) {
     console.error("[Login API Error]:", error);

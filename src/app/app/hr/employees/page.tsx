@@ -26,6 +26,8 @@ import {
   ExternalLink,
   Lock,
   Crown,
+  CheckCircle2,
+  Landmark,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { HrNav } from "@/modules/hr/components/hr-nav";
@@ -46,6 +48,32 @@ const LEADERSHIP_ROLE_COLORS: Record<string, string> = {
   ADMIN: "bg-slate-500/10 text-slate-300 border-slate-500/20",
   SUPER_ADMIN: "bg-red-500/10 text-red-400 border-red-500/20",
 };
+
+const DESIGNATION_OPTIONS = [
+  { label: "Select Designation...", value: "" },
+  { label: "Accountant (Finance & Accounts)", value: "Accountant" },
+  { label: "Senior Accountant", value: "Senior Accountant" },
+  { label: "Accounts Executive", value: "Accounts Executive" },
+  { label: "Finance Manager", value: "Finance Manager" },
+  { label: "Financial Analyst", value: "Financial Analyst" },
+  { label: "Chief Financial Officer (CFO)", value: "Chief Financial Officer (CFO)" },
+  { label: "Software Engineer", value: "Software Engineer" },
+  { label: "Senior Software Engineer", value: "Senior Software Engineer" },
+  { label: "Lead Architect / Tech Lead", value: "Lead Architect" },
+  { label: "Chief Technology Officer (CTO)", value: "Chief Technology Officer (CTO)" },
+  { label: "Product Manager", value: "Product Manager" },
+  { label: "HR Specialist / Executive", value: "HR Specialist" },
+  { label: "HR Manager", value: "HR Manager" },
+  { label: "Chief Human Resources Officer (CHRO)", value: "Chief Human Resources Officer (CHRO)" },
+  { label: "Operations Specialist", value: "Operations Specialist" },
+  { label: "Operations Manager", value: "Operations Manager" },
+  { label: "Chief Operating Officer (COO)", value: "Chief Operating Officer (COO)" },
+  { label: "Marketing Specialist", value: "Marketing Specialist" },
+  { label: "Sales Executive", value: "Sales Executive" },
+  { label: "Chief Marketing Officer (CMO)", value: "Chief Marketing Officer (CMO)" },
+  { label: "Chief Executive Officer (CEO)", value: "Chief Executive Officer (CEO)" },
+  { label: "Other / Custom Designation...", value: "CUSTOM" },
+];
 
 function getRoleColor(code: string) {
   return LEADERSHIP_ROLE_COLORS[code] ?? "bg-slate-500/10 text-slate-400 border-slate-500/20";
@@ -94,6 +122,7 @@ export default function EmployeeDirectoryPage() {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [isCustomDesignation, setIsCustomDesignation] = useState(false);
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -216,6 +245,7 @@ export default function EmployeeDirectoryPage() {
 
       const createdEmp = json.data;
       setIsDrawerOpen(false);
+      setIsCustomDesignation(false);
       setFormData({
         firstName: "",
         lastName: "",
@@ -648,13 +678,66 @@ export default function EmployeeDirectoryPage() {
             placeholder="+917249271897"
           />
 
-          <Input
-            label="Official Designation"
-            value={formData.designation}
-            onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
-            placeholder="e.g. Software Engineer / Lead Architect"
-            required
-          />
+          {/* Official Designation Dropdown */}
+          <div className="space-y-1.5">
+            <Select
+              label="Official Designation"
+              options={DESIGNATION_OPTIONS}
+              value={
+                DESIGNATION_OPTIONS.some((opt) => opt.value === formData.designation)
+                  ? formData.designation
+                  : formData.designation
+                  ? "CUSTOM"
+                  : ""
+              }
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === "CUSTOM") {
+                  setIsCustomDesignation(true);
+                  setFormData((prev) => ({ ...prev, designation: "" }));
+                } else {
+                  setIsCustomDesignation(false);
+                  const isAcc = val.toLowerCase().includes("account");
+                  const finDept = isAcc
+                    ? departments.find(
+                        (d) =>
+                          d.name.toLowerCase().includes("finance") ||
+                          d.name.toLowerCase().includes("account")
+                      )
+                    : null;
+                  setFormData((prev) => ({
+                    ...prev,
+                    designation: val,
+                    departmentId: finDept && !prev.departmentId ? finDept.id : prev.departmentId,
+                  }));
+                }
+              }}
+              required
+            />
+
+            {/* Custom Designation Input if "Other / Custom" is selected */}
+            {isCustomDesignation && (
+              <Input
+                label="Custom Designation Title"
+                value={formData.designation}
+                onChange={(e) => setFormData({ ...formData, designation: e.target.value })}
+                placeholder="Enter custom designation (e.g. Lead Billing Specialist)"
+                required
+                className="mt-1"
+              />
+            )}
+
+            {/* Accountant Auto-Redirect Notice */}
+            {(formData.designation.toLowerCase().includes("accountant") ||
+              formData.designation.toLowerCase().includes("accounts")) && (
+              <div className="flex items-center gap-2 p-2.5 rounded-lg bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs mt-1.5 animate-fadeIn">
+                <Landmark className="h-4 w-4 shrink-0 text-emerald-400" />
+                <span>
+                  <strong>Accountant Designation:</strong> When this employee logs in with their credentials, they will automatically be redirected to the <strong>Accounts & Finance Dashboard</strong>.
+                </span>
+              </div>
+            )}
+          </div>
 
           <Select
             label="Department"

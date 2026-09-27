@@ -93,16 +93,24 @@ export class AttendanceService {
   }
 
   /**
-   * Retrieves today's corporate attendance overview
+   * Retrieves today's corporate attendance overview scoped by organization
    */
-  static async getTodayOverview() {
+  static async getTodayOverview(organizationId?: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
+    const empWhere: any = { employmentStatus: "ACTIVE" };
+    const attWhere: any = { date: today };
+
+    if (organizationId) {
+      empWhere.organizationId = organizationId;
+      attWhere.employee = { organizationId };
+    }
+
     const [totalEmployees, records] = await Promise.all([
-      db.employee.count({ where: { employmentStatus: "ACTIVE" } }),
+      db.employee.count({ where: empWhere }),
       db.attendanceRecord.findMany({
-        where: { date: today },
+        where: attWhere,
         include: {
           employee: {
             select: {

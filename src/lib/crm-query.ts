@@ -187,10 +187,10 @@ export async function buildCrmScopeFilter(
     requestedOwnerId?: string;
   } = {}
 ): Promise<{ organizationId: string; [key: string]: any }> {
-  if (!user.employee) throw new Error("Authenticated user has no employee profile");
+  const orgId = user.activeCompany?.id || user.employee?.organizationId;
+  if (!orgId) throw new Error("Authenticated user has no associated organization");
 
-  const orgId = user.employee.organizationId;
-  const empId = user.employee.id;
+  const empId = user.employee?.id || user.id;
   const isExec = isCrmExecutive(user);
   const isDeptHead = user.roleCode === "DEPARTMENT_HEAD";
   const isManager = user.roleCode === "MANAGER";

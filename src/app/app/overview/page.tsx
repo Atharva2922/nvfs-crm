@@ -1,4 +1,5 @@
 import React from "react";
+import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/lib/auth";
 import { PageHeader } from "@/components/layout/page-header";
 import { AttendanceWidget } from "@/components/dashboard/widgets/AttendanceWidget";
@@ -21,11 +22,21 @@ export const dynamic = "force-dynamic";
 
 export default async function AppOverviewPage() {
   const user = await getCurrentUser();
-  const telemetry = user ? await OverviewDashboardService.getOverviewTelemetry(user) : null;
-
   if (!user) {
     return null;
   }
+
+  const rawDesignation = (user.employee?.designation || "").trim().toLowerCase();
+  const isAccountant =
+    rawDesignation.includes("accountant") ||
+    rawDesignation.includes("accounts") ||
+    (user.roleCode as string) === "ACCOUNTANT";
+
+  if (isAccountant) {
+    redirect("/app/accounts");
+  }
+
+  const telemetry = user ? await OverviewDashboardService.getOverviewTelemetry(user) : null;
 
   const employeeName = user.employee
     ? `${user.employee.firstName} ${user.employee.lastName}`
