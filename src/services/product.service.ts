@@ -366,12 +366,15 @@ export class ProductService {
     const orgId = user.employee.organizationId;
 
     const existing = await db.product.findFirst({
-      where: { id, organizationId: orgId },
+      where: {
+        organizationId: orgId,
+        OR: [{ id }, { sku: id }],
+      },
     });
     if (!existing) throw new Error("Product not found");
 
     const updated = await db.product.update({
-      where: { id },
+      where: { id: existing.id },
       data: { status: "ARCHIVED", isActive: false },
     });
 

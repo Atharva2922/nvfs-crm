@@ -43,7 +43,9 @@ interface AccountsEntityPageProps {
   columns: ColumnDef[];
   initialData?: any[];
   newButtonText?: string;
+  newButtonHref?: string;
   onNewClick?: () => void;
+  onViewClick?: (row: any) => void;
   emptyTitle?: string;
   emptySubtitle?: string;
 }
@@ -56,7 +58,9 @@ export function AccountsEntityPage({
   columns,
   initialData = [],
   newButtonText = "Create New",
+  newButtonHref,
   onNewClick,
+  onViewClick,
   emptyTitle = "No records found",
   emptySubtitle = "Get started by recording your first transaction.",
 }: AccountsEntityPageProps) {
@@ -158,14 +162,26 @@ export function AccountsEntityPage({
             <FileSpreadsheet className="h-3.5 w-3.5 text-blue-600" />
             Export CSV
           </Button>
-          <Button
-            size="sm"
-            onClick={onNewClick}
-            className="h-9 gap-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-sm"
-          >
-            <Plus className="h-4 w-4" />
-            {newButtonText}
-          </Button>
+          {newButtonHref ? (
+            <Link href={newButtonHref}>
+              <Button
+                size="sm"
+                className="h-9 gap-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-sm"
+              >
+                <Plus className="h-4 w-4" />
+                {newButtonText}
+              </Button>
+            </Link>
+          ) : (
+            <Button
+              size="sm"
+              onClick={onNewClick}
+              className="h-9 gap-1.5 text-xs bg-blue-600 hover:bg-blue-500 text-white font-medium shadow-sm"
+            >
+              <Plus className="h-4 w-4" />
+              {newButtonText}
+            </Button>
+          )}
         </div>
       </div>
 
@@ -291,13 +307,15 @@ export function AccountsEntityPage({
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="h-7 px-2 text-xs text-slate-600 dark:text-slate-400 hover:text-emerald-600"
+                          onClick={() => onViewClick?.(row)}
+                          className="h-7 px-2 text-xs text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-medium"
                         >
                           View
                         </Button>
                         <Button
                           variant="ghost"
                           size="icon"
+                          onClick={() => onViewClick?.(row)}
                           className="h-7 w-7 text-slate-400 hover:text-slate-600"
                         >
                           <MoreVertical className="h-3.5 w-3.5" />
@@ -317,14 +335,26 @@ export function AccountsEntityPage({
                         {emptyTitle}
                       </h3>
                       <p className="text-xs text-slate-500 mt-1 mb-4">{emptySubtitle}</p>
-                      <Button
-                        size="sm"
-                        onClick={onNewClick}
-                        className="bg-emerald-600 hover:bg-emerald-700 text-white text-xs gap-1"
-                      >
-                        <Plus className="h-3.5 w-3.5" />
-                        {newButtonText}
-                      </Button>
+                      {newButtonHref ? (
+                        <Link href={newButtonHref}>
+                          <Button
+                            size="sm"
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs gap-1"
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                            {newButtonText}
+                          </Button>
+                        </Link>
+                      ) : onNewClick ? (
+                        <Button
+                          size="sm"
+                          onClick={onNewClick}
+                          className="bg-blue-600 hover:bg-blue-500 text-white text-xs gap-1"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {newButtonText}
+                        </Button>
+                      ) : null}
                     </div>
                   </td>
                 </tr>

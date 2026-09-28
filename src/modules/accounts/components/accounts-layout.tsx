@@ -89,8 +89,8 @@ export function AccountsLayout({ children }: AccountsLayoutProps) {
           onSelectCompany={handleSelectCompany}
         />
 
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800">
-          <div className="mx-auto max-w-7xl">{children}</div>
+        <main className="flex-1 overflow-y-auto flex flex-col scrollbar-thin scrollbar-thumb-slate-300 dark:scrollbar-thumb-slate-800">
+          {children}
         </main>
       </div>
 

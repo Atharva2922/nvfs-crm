@@ -355,53 +355,81 @@ export function Sidebar() {
     <aside
       className={cn(
         "relative flex flex-col border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#090d16] text-slate-700 dark:text-slate-200 transition-all duration-200 ease-in-out select-none z-30",
-        collapsed ? "w-16" : "w-64"
+        collapsed ? "w-[68px]" : "w-64"
       )}
     >
-      {/* Brand & Organization Header */}
-      <div className="flex h-14 items-center justify-between px-3.5 border-b border-slate-200 dark:border-slate-800/80">
-        <Link href="/app/overview" className="flex items-center gap-2.5 overflow-hidden">
-          {companyLogo ? (
-            <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white p-0.5 shadow-sm">
-              <img
-                src={companyLogo}
-                alt={companyName}
-                className="h-full w-full object-contain"
-              />
-            </div>
-          ) : (
-            <div
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-bold text-sm text-white shadow-md transition-colors"
-              style={{ backgroundColor: primaryColor }}
+      {/* Brand & Organization Header - No Overlap on Logo */}
+      <div className="flex h-14 items-center border-b border-slate-200 dark:border-slate-800/80 px-2.5">
+        {!collapsed ? (
+          <div className="flex items-center justify-between w-full overflow-hidden">
+            <Link href="/app/overview" className="flex items-center gap-2.5 overflow-hidden">
+              {companyLogo ? (
+                <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white p-0.5 shadow-sm">
+                  <img
+                    src={companyLogo}
+                    alt={companyName}
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-bold text-sm text-white shadow-md transition-colors"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {companyInitials || "CR"}
+                </div>
+              )}
+              <div className="flex flex-col truncate">
+                <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white truncate">
+                  {companyName}
+                </span>
+                <span
+                  className="text-[10px] font-mono tracking-wider truncate font-semibold"
+                  style={{ color: primaryColor }}
+                >
+                  {companyCode}
+                </span>
+              </div>
+            </Link>
+            <button
+              onClick={() => setCollapsed(true)}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 transition-colors ml-1"
+              title="Collapse sidebar"
             >
-              {companyInitials || "CR"}
-            </div>
-          )}
-          {!collapsed && (
-            <div className="flex flex-col truncate">
-              <span className="text-sm font-semibold tracking-tight text-slate-900 dark:text-white truncate">
-                {companyName}
-              </span>
-              <span
-                className="text-[10px] font-mono tracking-wider truncate font-semibold"
-                style={{ color: primaryColor }}
-              >
-                {companyCode}
-              </span>
-            </div>
-          )}
-        </Link>
-        <button
-          onClick={() => setCollapsed(!collapsed)}
-          className="flex h-7 w-7 items-center justify-center rounded text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-200 transition-colors"
-          title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
-        >
-          {collapsed ? <PanelLeft className="h-4 w-4" /> : <PanelLeftClose className="h-4 w-4" />}
-        </button>
+              <PanelLeftClose className="h-4 w-4" />
+            </button>
+          </div>
+        ) : (
+          /* Clean centered logo with zero overlap when collapsed */
+          <div className="w-full flex items-center justify-center">
+            <Link
+              href="/app/overview"
+              className="flex items-center justify-center group focus:outline-none"
+              title={companyName}
+            >
+              {companyLogo ? (
+                <div className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-slate-200/80 dark:border-slate-700/80 bg-white p-0.5 shadow-sm group-hover:scale-105 transition-transform">
+                  <img
+                    src={companyLogo}
+                    alt={companyName}
+                    className="h-full w-full object-contain"
+                  />
+                </div>
+              ) : (
+                <div
+                  className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md font-bold text-sm text-white shadow-md group-hover:scale-105 transition-transform"
+                  style={{ backgroundColor: primaryColor }}
+                >
+                  {companyInitials || "CR"}
+                </div>
+              )}
+            </Link>
+          </div>
+        )}
       </div>
 
       {/* Navigation Links */}
-      <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+      <div className="flex-1 overflow-y-auto px-1.5 py-3 space-y-4">
         {navGroups.map((group, gIdx) => (
           <div key={gIdx} className="space-y-1">
             {!collapsed && group.groupName && (
@@ -420,22 +448,32 @@ export function Sidebar() {
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "group flex items-center gap-2.5 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors",
+                    "group rounded-lg transition-all",
+                    collapsed
+                      ? "flex flex-col items-center justify-center py-2 px-1 text-center w-full"
+                      : "flex items-center gap-2.5 px-2.5 py-1.5 text-xs font-medium",
                     isActive
                       ? "bg-blue-600/15 text-blue-700 dark:text-blue-300 border border-blue-500/30 font-semibold shadow-xs"
                       : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800/60 hover:text-slate-900 dark:hover:text-slate-200"
                   )}
-                  title={collapsed ? item.title : undefined}
+                  title={item.title}
                 >
                   <Icon
                     className={cn(
-                      "h-4 w-4 shrink-0 transition-colors",
+                      "shrink-0 transition-transform group-hover:scale-105",
+                      collapsed ? "h-4 w-4 mb-0.5" : "h-4 w-4",
                       isActive
                         ? "text-blue-600 dark:text-blue-400"
                         : "text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300"
                     )}
                   />
-                  {!collapsed && <span className="truncate flex-1">{item.title}</span>}
+                  {collapsed ? (
+                    <span className="text-[10px] leading-3 text-center truncate max-w-[58px] tracking-tight font-medium">
+                      {item.title}
+                    </span>
+                  ) : (
+                    <span className="truncate flex-1">{item.title}</span>
+                  )}
                 </Link>
               );
             })}
@@ -443,10 +481,18 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Tenant Boundary & Role Badge */}
-      <div className="border-t border-slate-200 dark:border-slate-800/80 p-3">
-        {!collapsed ? (
-          <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400">
+      {/* Tenant Boundary & Role Badge / Bottom Expand Toggle */}
+      <div className="border-t border-slate-200 dark:border-slate-800/80 p-2 shrink-0">
+        {collapsed ? (
+          <button
+            onClick={() => setCollapsed(false)}
+            className="w-full flex items-center justify-center h-8 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition-colors"
+            title="Expand sidebar"
+          >
+            <PanelLeft className="h-4 w-4" />
+          </button>
+        ) : (
+          <div className="flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 px-1 py-1">
             <div className="flex items-center gap-1.5 truncate max-w-[130px]">
               <span
                 className="h-2 w-2 rounded-full shrink-0"
@@ -465,13 +511,6 @@ export function Sidebar() {
             >
               {currentUser?.roleName || "Active"}
             </span>
-          </div>
-        ) : (
-          <div className="flex justify-center" title={`${companyName} Active`}>
-            <span
-              className="h-2.5 w-2.5 rounded-full"
-              style={{ backgroundColor: primaryColor }}
-            />
           </div>
         )}
       </div>
