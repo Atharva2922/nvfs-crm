@@ -20,6 +20,7 @@ import {
   LogOut,
   RefreshCw,
 } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface AttendanceItem {
   id: string;
@@ -40,6 +41,24 @@ interface AttendanceItem {
 }
 
 export default function AttendancePage() {
+  const { user, role, roleLevel, isSuperAdmin, isExecutive } = useAuth();
+
+  // Executives, HR, and Admin work hybrid by default
+  const isHybridDefault = Boolean(
+    isExecutive ||
+    isSuperAdmin ||
+    (role as string) === "HR" ||
+    (role as string) === "ADMIN" ||
+    (role as string) === "CHRO" ||
+    (roleLevel && roleLevel >= 50) ||
+    user?.employee?.workMode === "HYBRID" ||
+    user?.employee?.designation?.toLowerCase().includes("chief") ||
+    user?.employee?.designation?.toLowerCase().includes("officer") ||
+    user?.employee?.designation?.toLowerCase().includes("director") ||
+    user?.employee?.designation?.toLowerCase().includes("admin") ||
+    user?.employee?.designation?.toLowerCase().includes("human resources")
+  );
+
   const [scope, setScope] = useState<"my" | "all">("my");
   const [records, setRecords] = useState<AttendanceItem[]>([]);
   const [myToday, setMyToday] = useState<AttendanceItem | null>(null);
@@ -51,8 +70,20 @@ export default function AttendancePage() {
   });
   const [loading, setLoading] = useState(true);
   const [punchLoading, setPunchLoading] = useState(false);
-  const [workMode, setWorkMode] = useState<"ON_SITE" | "REMOTE" | "HYBRID">("ON_SITE");
+  const [workMode, setWorkMode] = useState<"ON_SITE" | "REMOTE" | "HYBRID">(
+    isHybridDefault ? "HYBRID" : "ON_SITE"
+  );
   const [currentTime, setCurrentTime] = useState<string>("");
+
+  useEffect(() => {
+    if (isHybridDefault) {
+      setWorkMode("HYBRID");
+    } else if (user?.employee?.workMode === "REMOTE") {
+      setWorkMode("REMOTE");
+    } else {
+      setWorkMode((user?.employee?.workMode as any) || "ON_SITE");
+    }
+  }, [isHybridDefault, user?.employee?.workMode]);
 
   useEffect(() => {
     setCurrentTime(new Date().toLocaleTimeString());
@@ -237,7 +268,14 @@ export default function AttendancePage() {
             {/* Work Mode Toggle (Only if not checked in) */}
             {!myToday?.checkInTime && (
               <div className="mt-4">
-                <label className="block text-[11px] font-medium text-slate-400 mb-1.5">Select Work Location</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-[11px] font-medium text-slate-400">Select Work Location</label>
+                  {isHybridDefault && (
+                    <span className="text-[10px] text-blue-400 font-semibold bg-blue-950/70 px-2 py-0.5 rounded border border-blue-800/60">
+                      Default: Hybrid Mode
+                    </span>
+                  )}
+                </div>
                 <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"

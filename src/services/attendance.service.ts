@@ -5,9 +5,31 @@ export class AttendanceService {
   /**
    * Records daily check-in for an employee
    */
-  static async recordCheckIn(employeeId: string, workMode = "ON_SITE") {
+  static async recordCheckIn(employeeId: string, workMode?: string) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+
+    let effectiveWorkMode = workMode;
+    if (!effectiveWorkMode) {
+      const emp = await db.employee.findUnique({
+        where: { id: employeeId },
+        include: { user: { include: { role: true } } },
+      });
+      const roleCode = (emp?.user?.role?.code || "").toUpperCase();
+      const roleLevel = emp?.user?.role?.level || 10;
+      const des = (emp?.designation || "").toLowerCase();
+      const isExecOrHrOrAdmin =
+        roleLevel >= 40 ||
+        ["SUPER_ADMIN", "ADMIN", "HR", "CHRO", "CEO", "COO", "CFO", "CIO", "CTO", "CMO", "DIRECTOR", "CHAIRPERSON", "VP"].includes(roleCode) ||
+        emp?.workMode === "HYBRID" ||
+        des.includes("chief") ||
+        des.includes("officer") ||
+        des.includes("admin") ||
+        des.includes("human resources") ||
+        des.includes("director");
+
+      effectiveWorkMode = isExecOrHrOrAdmin ? "HYBRID" : (emp?.workMode || "ON_SITE");
+    }
 
     const existing = await db.attendanceRecord.findUnique({
       where: {

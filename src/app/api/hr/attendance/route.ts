@@ -7,7 +7,7 @@ import { z } from "zod";
 
 const attendanceActionSchema = z.object({
   action: z.enum(["CHECK_IN", "CHECK_OUT"]),
-  workMode: z.enum(["ON_SITE", "REMOTE", "HYBRID"]).optional().default("ON_SITE"),
+  workMode: z.enum(["ON_SITE", "REMOTE", "HYBRID"]).optional(),
 });
 
 export async function GET(req: NextRequest) {
@@ -105,7 +105,23 @@ export async function POST(req: NextRequest) {
 
     let record;
     if (parse.data.action === "CHECK_IN") {
-      record = await AttendanceService.recordCheckIn(user.employee.id, parse.data.workMode);
+      const roleCode = (user.roleCode || "").toUpperCase();
+      const roleLevel = user.roleLevel || 10;
+      const des = (user.employee?.designation || "").toLowerCase();
+      const isExecutiveOrHrOrAdmin =
+        roleLevel >= 40 ||
+        ["SUPER_ADMIN", "ADMIN", "HR", "CHRO", "CEO", "COO", "CFO", "CIO", "CTO", "CMO", "DIRECTOR", "CHAIRPERSON", "VP"].includes(roleCode) ||
+        (user.employee as any)?.workMode === "HYBRID" ||
+        des.includes("chief") ||
+        des.includes("officer") ||
+        des.includes("admin") ||
+        des.includes("human resources") ||
+        des.includes("director");
+
+      const resolvedWorkMode =
+        parse.data.workMode || (isExecutiveOrHrOrAdmin ? "HYBRID" : ((user.employee as any)?.workMode || "ON_SITE"));
+
+      record = await AttendanceService.recordCheckIn(user.employee.id, resolvedWorkMode);
     } else {
       record = await AttendanceService.recordCheckOut(user.employee.id);
     }

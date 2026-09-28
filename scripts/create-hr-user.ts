@@ -64,6 +64,7 @@ async function main() {
         designation: "Chief Human Resources Officer",
         employmentType: "FULL_TIME",
         employmentStatus: "ACTIVE",
+        workMode: "HYBRID",
         hireDate: new Date(),
       },
     });
@@ -79,6 +80,7 @@ async function main() {
         lastName: "Kale",
         designation: "Chief Human Resources Officer",
         employmentStatus: "ACTIVE",
+        workMode: "HYBRID",
       },
     });
     console.log("Updated Employee:", employee.id, employee.firstName, employee.lastName);

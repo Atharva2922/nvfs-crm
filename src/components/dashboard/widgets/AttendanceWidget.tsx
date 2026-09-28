@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from "react";
 import { Clock, CheckCircle2, AlertCircle, Play, LogOut, RefreshCw } from "lucide-react";
+import { useAuth } from "@/components/providers/auth-provider";
 
 interface AttendanceWidgetProps {
   employeeId?: string;
@@ -15,6 +16,23 @@ interface AttendanceWidgetProps {
 }
 
 export function AttendanceWidget({ employeeId, initialRecord }: AttendanceWidgetProps) {
+  const { user, role, roleLevel, isSuperAdmin, isExecutive } = useAuth();
+
+  const isHybridDefault = Boolean(
+    isExecutive ||
+    isSuperAdmin ||
+    (role as string) === "HR" ||
+    (role as string) === "ADMIN" ||
+    (role as string) === "CHRO" ||
+    (roleLevel && roleLevel >= 50) ||
+    user?.employee?.workMode === "HYBRID" ||
+    user?.employee?.designation?.toLowerCase().includes("chief") ||
+    user?.employee?.designation?.toLowerCase().includes("officer") ||
+    user?.employee?.designation?.toLowerCase().includes("director") ||
+    user?.employee?.designation?.toLowerCase().includes("admin") ||
+    user?.employee?.designation?.toLowerCase().includes("human resources")
+  );
+
   const [loading, setLoading] = useState(initialRecord === undefined);
   const [actionLoading, setActionLoading] = useState(false);
   const [todayRecord, setTodayRecord] = useState<{
@@ -51,10 +69,11 @@ export function AttendanceWidget({ employeeId, initialRecord }: AttendanceWidget
   const handleClockIn = async () => {
     try {
       setActionLoading(true);
+      const chosenMode = isHybridDefault ? "HYBRID" : (user?.employee?.workMode || "ON_SITE");
       const res = await fetch("/api/hr/attendance", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "CHECK_IN", workMode: "ON_SITE" }),
+        body: JSON.stringify({ action: "CHECK_IN", workMode: chosenMode }),
       });
       if (res.ok) {
         await fetchTodayAttendance();
