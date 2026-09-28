@@ -12,6 +12,79 @@ export interface AssignJobPayload {
   estimatedHours?: number;
 }
 
+export const EXECUTIVE_ROLES = new Set([
+  "SUPER_ADMIN",
+  "ADMIN",
+  "CHAIRPERSON",
+  "CEO",
+  "COO",
+  "CFO",
+  "CIO",
+  "CTO",
+  "CMO",
+  "CHRO",
+  "HR",
+  "DIRECTOR",
+  "VP",
+  "PRESIDENT",
+]);
+
+export function isExecutiveEmployee(emp: {
+  designation?: string | null;
+  department?: string | { name?: string | null; code?: string | null } | null;
+  email?: string | null;
+  roleCode?: string | null;
+  roleLevel?: number | null;
+  user?: { email?: string | null; role?: { code?: string | null; level?: number | null } | null } | null;
+}): boolean {
+  // 1. Role code or level
+  const roleCode = (emp.roleCode || emp.user?.role?.code || "").toUpperCase();
+  const roleLevel = emp.roleLevel ?? emp.user?.role?.level ?? 10;
+  if (EXECUTIVE_ROLES.has(roleCode) || roleLevel >= 40 || (roleCode && roleCode !== "EMPLOYEE")) {
+    return true;
+  }
+
+  // 2. Email ending in .internal (system architecture personas)
+  const email = (emp.email || emp.user?.email || "").toLowerCase();
+  if (email.endsWith(".internal")) {
+    return true;
+  }
+
+  // 3. Department: Executive Directorate
+  const deptName = (typeof emp.department === "string" ? emp.department : emp.department?.name || "").toLowerCase();
+  const deptCode = (typeof emp.department === "object" ? emp.department?.code || "" : "").toUpperCase();
+  if (deptCode === "EXEC" || deptName.includes("executive directorate") || deptName === "executive") {
+    return true;
+  }
+
+  // 4. Designation keywords
+  const des = (emp.designation || "").toLowerCase().trim();
+  if (
+    des.includes("chief") ||
+    des.includes("ceo") ||
+    des.includes("cfo") ||
+    des.includes("coo") ||
+    des.includes("cio") ||
+    des.includes("cto") ||
+    des.includes("cmo") ||
+    des.includes("chro") ||
+    des.includes("cxo") ||
+    des.includes("administrator") ||
+    des.includes("admin") ||
+    des.includes("chairperson") ||
+    des.includes("director") ||
+    des.includes("president") ||
+    des.includes("vice president") ||
+    des.includes("vp") ||
+    des.includes("human resources officer") ||
+    des.startsWith("head of")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export class HrJobService {
   /**
    * Asserts that the authenticated user possesses HR executive authority.
@@ -53,7 +126,10 @@ export class HrJobService {
     // Verify target employee exists, is ACTIVE, and belongs to this organization
     const targetEmployee = await db.employee.findUnique({
       where: { id: data.employeeId },
-      include: { department: true },
+      include: {
+        department: true,
+        user: { include: { role: true } },
+      },
     });
 
     if (!targetEmployee) {
@@ -66,6 +142,13 @@ export class HrJobService {
 
     if (targetEmployee.employmentStatus !== "ACTIVE") {
       throw new Error("Cannot assign jobs to an employee who is not currently ACTIVE");
+    }
+
+    // Strictly enforce: HR can only assign tasks to regular staff employees and NOT to executives
+    if (isExecutiveEmployee(targetEmployee)) {
+      throw new Error(
+        "Invalid assignment: HR can only assign jobs to employees and not to executives or leadership."
+      );
     }
 
     const task = await db.task.create({

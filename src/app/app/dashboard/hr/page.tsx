@@ -15,7 +15,7 @@ import {
   BookOpen,
 } from "lucide-react";
 import Link from "next/link";
-import { HrJobService } from "@/services/hr-job.service";
+import { HrJobService, isExecutiveEmployee } from "@/services/hr-job.service";
 import { HrJobAssignmentCenter } from "@/modules/hr/hr-job-assignment-center";
 
 import { ExecutiveRestrictedState } from "@/modules/executive-dashboard/executive-states";
@@ -88,9 +88,16 @@ export default async function AppHrDashboardPage() {
         firstName: true,
         lastName: true,
         designation: true,
+        email: true,
         employeeNumber: true,
         employmentStatus: true,
-        department: { select: { name: true } },
+        department: { select: { name: true, code: true } },
+        user: {
+          select: {
+            email: true,
+            role: { select: { code: true, level: true } },
+          },
+        },
         assignedTasks: {
           where: { status: { in: ["TODO", "IN_PROGRESS"] } },
           select: { id: true },
@@ -114,7 +121,10 @@ export default async function AppHrDashboardPage() {
     HrJobService.listAssignedJobs(user).catch(() => []),
   ]);
 
-  const companyEmployeeOptions = allCompanyEmployeesRaw.map((e) => {
+  // Strictly filter to regular staff employees only — NO EXECUTIVES OR LEADERSHIP
+  const companyEmployeeOptions = allCompanyEmployeesRaw
+    .filter((e) => !isExecutiveEmployee(e))
+    .map((e) => {
     const activeTasksCount = e.assignedTasks?.length ?? 0;
     const activeOpsCount = (e.operationAssignments ?? []).filter(
       (oa: any) => ["ACTIVE", "SCHEDULED", "IN_PROGRESS"].includes(oa.operation?.status)

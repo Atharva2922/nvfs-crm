@@ -54,6 +54,54 @@ interface HrJobAssignmentCenterProps {
   primaryColor?: string;
 }
 
+function isExecutiveOption(emp: CompanyEmployeeOption): boolean {
+  const des = (emp.designation || "").toLowerCase().trim();
+  const dept = (emp.department || "").toLowerCase().trim();
+  const name = (emp.name || "").toLowerCase().trim();
+
+  if (dept.includes("executive directorate") || dept === "executive") {
+    return true;
+  }
+
+  if (
+    des.includes("chief") ||
+    des.includes("ceo") ||
+    des.includes("cfo") ||
+    des.includes("coo") ||
+    des.includes("cio") ||
+    des.includes("cto") ||
+    des.includes("cmo") ||
+    des.includes("chro") ||
+    des.includes("cxo") ||
+    des.includes("administrator") ||
+    des.includes("admin") ||
+    des.includes("chairperson") ||
+    des.includes("director") ||
+    des.includes("president") ||
+    des.includes("vice president") ||
+    des.includes("vp") ||
+    des.includes("human resources officer") ||
+    des.startsWith("head of")
+  ) {
+    return true;
+  }
+
+  if (
+    name.includes("super administrator") ||
+    name.includes("platform administrator") ||
+    name.includes("chief executive") ||
+    name.includes("chief financial") ||
+    name.includes("chief operating") ||
+    name.includes("chief information") ||
+    name.includes("chief marketing") ||
+    name.includes("human resources officer")
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 export function HrJobAssignmentCenter({
   initialJobs,
   companyEmployees,
@@ -67,13 +115,19 @@ export function HrJobAssignmentCenter({
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
+  // Strictly filter to regular staff employees only — NO EXECUTIVES OR LEADERSHIP
+  const assignableEmployees = useMemo(
+    () => companyEmployees.filter((e) => !isExecutiveOption(e)),
+    [companyEmployees]
+  );
+
   // Search & Status Filter
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("ALL");
 
   // New Job Form State
   const [formData, setFormData] = useState({
-    employeeId: companyEmployees[0]?.id || "",
+    employeeId: assignableEmployees[0]?.id || "",
     title: "",
     description: "",
     priority: "MEDIUM",
@@ -130,11 +184,11 @@ export function HrJobAssignmentCenter({
       }
 
       // Success
-      const targetEmp = companyEmployees.find((e) => e.id === formData.employeeId);
+      const targetEmp = assignableEmployees.find((e) => e.id === formData.employeeId);
       setSuccessMsg(`Job successfully assigned to ${targetEmp?.name || "employee"}!`);
       setShowModal(false);
       setFormData({
-        employeeId: companyEmployees[0]?.id || "",
+        employeeId: assignableEmployees[0]?.id || "",
         title: "",
         description: "",
         priority: "MEDIUM",
@@ -248,7 +302,12 @@ export function HrJobAssignmentCenter({
           </div>
 
           <button
-            onClick={() => setShowModal(true)}
+            onClick={() => {
+              if (!formData.employeeId && assignableEmployees[0]?.id) {
+                setFormData((prev) => ({ ...prev, employeeId: assignableEmployees[0]?.id || "" }));
+              }
+              setShowModal(true);
+            }}
             className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-xl text-white text-xs font-semibold shadow-md transition-all hover:opacity-90 self-start sm:self-auto"
             style={{ backgroundColor: primaryColor }}
           >
@@ -477,16 +536,25 @@ export function HrJobAssignmentCenter({
                   onChange={(e) => setFormData({ ...formData, employeeId: e.target.value })}
                   className="w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 px-3 py-2 text-slate-900 dark:text-white font-medium"
                 >
-                  {companyEmployees.map((emp) => (
-                    <option key={emp.id} value={emp.id}>
-                      {emp.isFree !== undefined ? (emp.isFree ? "🟢" : "🟡") : ""} {emp.name} — {emp.designation} ({emp.department})
-                      {emp.isFree === false && emp.busyReason ? ` · ${emp.busyReason}` : ""}
+                  {assignableEmployees.length === 0 ? (
+                    <option value="" disabled>
+                      No operational staff employees available
                     </option>
-                  ))}
+                  ) : (
+                    assignableEmployees.map((emp) => (
+                      <option key={emp.id} value={emp.id}>
+                        {emp.isFree !== undefined ? (emp.isFree ? "🟢" : "🟡") : ""} {emp.name} — {emp.designation} ({emp.department})
+                        {emp.isFree === false && emp.busyReason ? ` · ${emp.busyReason}` : ""}
+                      </option>
+                    ))
+                  )}
                 </select>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  HR policy: Work mandates can only be assigned to operational staff employees (executive leadership is excluded).
+                </p>
                 {/* Live availability card */}
                 {formData.employeeId && (() => {
-                  const sel = companyEmployees.find((e) => e.id === formData.employeeId);
+                  const sel = assignableEmployees.find((e) => e.id === formData.employeeId);
                   if (!sel || sel.isFree === undefined) return null;
                   return (
                     <div className={`mt-1.5 rounded-lg px-3 py-2 flex items-center gap-2 text-xs font-medium border ${
