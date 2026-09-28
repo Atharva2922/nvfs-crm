@@ -10,7 +10,8 @@ export type UnifiedEventType =
   | "TASK_DUE"
   | "HOLIDAY"
   | "LEAVE"
-  | "DEADLINE";
+  | "DEADLINE"
+  | "CURRENT_AFFAIR";
 
 export interface UnifiedCalendarItem {
   id: string;
@@ -66,8 +67,8 @@ export class CalendarService {
 
     const results: UnifiedCalendarItem[] = [];
 
-    // 1. Direct Calendar Events (Meetings, Company Events, Client Demos)
-    if (canInclude("MEETING") || canInclude("COMPANY_EVENT") || canInclude("CLIENT_MEETING")) {
+    // 1. Direct Calendar Events (Meetings, Company Events, Client Demos, Current Affairs)
+    if (canInclude("MEETING") || canInclude("COMPANY_EVENT") || canInclude("CLIENT_MEETING") || canInclude("CURRENT_AFFAIR")) {
       const calEvents = await db.calendarEvent.findMany({
         where: {
           organizationId: orgId,
@@ -80,16 +81,39 @@ export class CalendarService {
       });
 
       for (const ev of calEvents) {
+        const titleLower = ev.title.toLowerCase();
+        const descLower = (ev.description || "").toLowerCase();
+        const isCurrentAffair =
+          titleLower.includes("observance") ||
+          titleLower.includes("affair") ||
+          titleLower.includes("national") ||
+          titleLower.includes("jayanti") ||
+          titleLower.includes("summit") ||
+          descLower.includes("commemoration") ||
+          descLower.includes("observance") ||
+          ev.type === "CURRENT_AFFAIR";
+
+        if (!includeAll && types && types.length > 0) {
+          if (isCurrentAffair && !types.includes("CURRENT_AFFAIR") && !types.includes("COMPANY_EVENT")) continue;
+          if (!isCurrentAffair && !types.includes(ev.type)) continue;
+        }
+
         let color = "#3b82f6"; // Blue for general meetings
-        if (ev.type === "COMPANY_EVENT") color = "#8b5cf6"; // Purple
-        if (ev.type === "CLIENT_MEETING") color = "#06b6d4"; // Cyan
-        if (ev.type === "DEADLINE") color = "#f43f5e"; // Rose
+        if (isCurrentAffair) color = "#f59e0b"; // Amber Gold for Current Affairs & Observances
+        else if (ev.type === "COMPANY_EVENT") color = "#8b5cf6"; // Purple
+        else if (ev.type === "CLIENT_MEETING") color = "#06b6d4"; // Cyan
+        else if (ev.type === "DEADLINE") color = "#f43f5e"; // Rose
+
+        const eventType = isCurrentAffair ? "CURRENT_AFFAIR" : (ev.type as UnifiedEventType);
+        const badgeLabel = isCurrentAffair
+          ? "Current Affairs"
+          : ev.type.replace(/_/g, " ");
 
         results.push({
           id: `cal-${ev.id}`,
           title: ev.title,
           description: ev.description,
-          type: ev.type as UnifiedEventType,
+          type: eventType,
           startDate: ev.startDate.toISOString(),
           endDate: ev.endDate.toISOString(),
           isAllDay: ev.isAllDay,
@@ -98,7 +122,7 @@ export class CalendarService {
           sourceId: ev.id,
           location: ev.location,
           meetUrl: ev.meetUrl,
-          badgeLabel: ev.type.replace(/_/g, " "),
+          badgeLabel,
           metadata: {
             creatorName: `${ev.creator.firstName} ${ev.creator.lastName}`,
             attendees: ev.attendees ? JSON.parse(ev.attendees) : [],
