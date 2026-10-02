@@ -100,12 +100,12 @@ export default async function AppCompanyAdminDashboardPage() {
             <span>Company Settings</span>
           </Link>
           <Link
-            href="/app/people"
+            href="/app/hr/employees"
             className="inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-xs font-semibold text-white shadow-md transition-all hover:opacity-90"
             style={{ backgroundColor: primaryColor }}
           >
             <Users className="h-4 w-4" />
-            <span>Manage Users</span>
+            <span>Manage Employees</span>
           </Link>
         </div>
       </div>
@@ -177,7 +177,7 @@ export default async function AppCompanyAdminDashboardPage() {
               </h2>
             </div>
             <Link
-              href="/app/people"
+              href="/app/hr/employees"
               className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
             >
               <span>Manage all</span>

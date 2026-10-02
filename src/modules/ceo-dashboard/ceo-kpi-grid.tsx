@@ -219,8 +219,8 @@ export function CeoKpiGrid({ kpis }: CeoKpiGridProps) {
         </div>
         <div className="mt-2 text-[11px] text-slate-400 flex items-center justify-between border-t border-slate-800/80 pt-2">
           <span>Total Headcount: {kpis.employees.total}</span>
-          <Link href="/app/people" className="text-blue-400 hover:underline flex items-center gap-0.5">
-            People <ArrowUpRight className="h-2.5 w-2.5" />
+          <Link href="/app/hr/employees" className="text-blue-400 hover:underline flex items-center gap-0.5">
+            Employees <ArrowUpRight className="h-2.5 w-2.5" />
           </Link>
         </div>
       </div>

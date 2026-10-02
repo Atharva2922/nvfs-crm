@@ -140,8 +140,9 @@ export function Sidebar() {
     navGroups.push({
       groupName: "ENTERPRISE OVERSIGHT",
       items: [
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "Org Hierarchy Tree", href: "/app/hr/hierarchy", icon: GitBranch },
-        { title: "Company People", href: "/app/people", icon: Users },
+        { title: "Company People", href: "/app/people", icon: UserPlus },
         { title: "CRM & Customers", href: "/app/crm", icon: Briefcase },
         { title: "Operations & Delivery", href: "/app/operations", icon: Layers },
         { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
@@ -160,7 +161,8 @@ export function Sidebar() {
       groupName: "COMPANY ADMINISTRATION",
       items: [
         { title: "Admin Center", href: "/app/dashboard/admin", icon: ShieldAlert },
-        { title: "Users & Roles", href: "/app/people", icon: Users },
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
+        { title: "Users & Roles", href: "/app/people", icon: UserPlus },
         { title: "Organization Hierarchy", href: "/app/hr/hierarchy", icon: GitBranch },
         { title: "Departments & Teams", href: "/app/hr", icon: Building },
         { title: "Workflows & Automations", href: "/app/settings/workflows", icon: Zap },
@@ -181,10 +183,11 @@ export function Sidebar() {
         ...(role === "CHAIRPERSON"
           ? [{ title: "Chairperson Oversight", href: "/app/dashboard/chairperson", icon: Building }]
           : []),
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "Accounts & Books", href: "/app/accounts", icon: Landmark },
         { title: "Org Hierarchy Tree", href: "/app/hr/hierarchy", icon: GitBranch },
         { title: "Executive Approvals", href: "/app/approvals", icon: ShieldCheck },
-        { title: "Company People", href: "/app/people", icon: Users },
+        { title: "Company People", href: "/app/people", icon: UserPlus },
         { title: "Strategic Reports", href: "/app/reports", icon: BarChart3 },
       ],
     });
@@ -197,7 +200,8 @@ export function Sidebar() {
     navGroups.push({
       groupName: "PEOPLE & CULTURE",
       items: [
-        { title: "HR Executive Center", href: "/app/dashboard/hr", icon: Users },
+        { title: "HR Executive Center", href: "/app/dashboard/hr", icon: Sparkles },
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "Company People", href: "/app/people", icon: UserPlus },
         { title: "Organization Hierarchy", href: "/app/hr/hierarchy", icon: GitBranch },
         { title: "Departments & Teams", href: "/app/hr", icon: Building },
@@ -216,6 +220,7 @@ export function Sidebar() {
       groupName: "OPERATIONS LEADERSHIP",
       items: [
         { title: "COO Operations Hub", href: "/app/dashboard/coo", icon: Activity },
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "Service Delivery & Operations", href: "/app/operations", icon: Layers },
         { title: "Products & Inventory", href: "/app/inventory", icon: Package },
         { title: "Company Projects", href: "/app/projects", icon: FolderKanban },
@@ -227,6 +232,7 @@ export function Sidebar() {
       groupName: "FINANCE & TREASURY",
       items: [
         { title: "CFO Treasury Center", href: "/app/dashboard/cfo", icon: IndianRupee },
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "Accounts & Books", href: "/app/accounts", icon: Landmark },
         { title: "Finance Hub", href: "/app/finance", icon: IndianRupee },
         { title: "Payroll Operations", href: "/app/payroll", icon: FileCheck },
@@ -238,6 +244,7 @@ export function Sidebar() {
       groupName: "TECHNOLOGY LEADERSHIP",
       items: [
         { title: "Tech Leadership Center", href: "/app/dashboard/cto", icon: Layers },
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "IT Infrastructure & Systems", href: "/app/operations", icon: GitBranch },
         { title: "Hardware & IT Inventory", href: "/app/inventory", icon: Package },
         { title: "Technology Projects", href: "/app/projects", icon: FolderKanban },
@@ -249,6 +256,7 @@ export function Sidebar() {
       groupName: "GROWTH & MARKETING",
       items: [
         { title: "CMO Growth Center", href: "/app/dashboard/cmo", icon: BarChart3 },
+        { title: "Employee Directory", href: "/app/hr/employees", icon: Users },
         { title: "CRM & Pipelines", href: "/app/crm", icon: Briefcase },
         { title: "Marketing Campaigns", href: "/app/projects", icon: FolderKanban },
         { title: "Marketing Approvals", href: "/app/approvals", icon: ShieldCheck },
@@ -317,6 +325,7 @@ export function Sidebar() {
     items: [
       { title: "Workspace Overview", href: "/app/overview", icon: LayoutDashboard },
       { title: "My Profile", href: "/app/profile", icon: User },
+      ...(isExecutiveOrAdmin ? [{ title: "Employee Directory", href: "/app/hr/employees", icon: Users }] : []),
       { title: "My Tasks", href: "/app/tasks", icon: CheckSquare },
       { title: "My Attendance", href: "/app/hr/attendance", icon: Clock },
       {
