@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useRef } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
@@ -169,8 +169,11 @@ export function EmployeeProfileDossier({
   const [docUploadOpen, setDocUploadOpen] = useState(false);
   const [uploadDocType, setUploadDocType] = useState("AADHAAR");
   const [uploadDocTitle, setUploadDocTitle] = useState("");
-  const [uploadDocFileName, setUploadDocFileName] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [fileError, setFileError] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const [uploadingDoc, setUploadingDoc] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Document verification modal state
   const [selectedDocForVerify, setSelectedDocForVerify] = useState<any | null>(null);
@@ -322,32 +325,70 @@ export function EmployeeProfileDossier({
     }));
   };
 
+  const handleFileSelect = (file: File) => {
+    setFileError(null);
+    const MAX_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_SIZE) {
+      setFileError(`File size (${(file.size / (1024 * 1024)).toFixed(2)} MB) exceeds the 10 MB maximum limit.`);
+      setSelectedFile(null);
+      return;
+    }
+    setSelectedFile(file);
+    if (!uploadDocTitle.trim()) {
+      const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      setUploadDocTitle(cleanName.charAt(0).toUpperCase() + cleanName.slice(1));
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleFileSelect(e.dataTransfer.files[0]);
+    }
+  };
+
   const handleUploadDocument = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!uploadDocTitle.trim()) return;
+    if (!selectedFile) {
+      setFileError("Please attach a soft copy file (PDF, PNG, JPG, or DOCX) to upload.");
+      return;
+    }
+    if (!uploadDocTitle.trim()) {
+      setFileError("Please provide a title for this document.");
+      return;
+    }
 
     try {
       setUploadingDoc(true);
-      const fileName = uploadDocFileName || `${uploadDocTitle.toLowerCase().replace(/\s+/g, "_")}.pdf`;
+      setFileError(null);
+
+      const data = new FormData();
+      data.append("file", selectedFile);
+      data.append("type", uploadDocType);
+      data.append("title", uploadDocTitle.trim());
+
       const res = await fetch(`/api/employees/${employee.id}/documents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          type: uploadDocType,
-          title: uploadDocTitle.trim(),
-          fileName,
-          fileUrl: `https://storage.internal.org/employees/${employee.id}/${fileName}`,
-          fileSize: 245000,
-          mimeType: "application/pdf",
-        }),
+        body: data,
       });
 
       const json = await res.json();
       if (!res.ok || !json.success) {
-        throw new Error(json.error?.message || "Failed to add document");
+        throw new Error(json.error?.message || "Failed to upload document");
       }
 
-      // Re-fetch dossier
+      // Re-fetch dossier to refresh completion and document vault
       const dossierRes = await fetch(`/api/employees/${employee.id}/profile`);
       const dossierJson = await dossierRes.json();
       if (dossierJson.success) {
@@ -356,10 +397,12 @@ export function EmployeeProfileDossier({
       }
 
       setDocUploadOpen(false);
+      setSelectedFile(null);
       setUploadDocTitle("");
-      setUploadDocFileName("");
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      onRefresh?.();
     } catch (err: any) {
-      alert(err.message || "Failed to upload document");
+      setFileError(err.message || "Failed to upload document");
     } finally {
       setUploadingDoc(false);
     }
@@ -1477,28 +1520,44 @@ export function EmployeeProfileDossier({
                     </Button>
                   </div>
 
-                  {/* Document Upload Modal / Drawer inline */}
+                  {/* Document Upload Drawer/Modal inline */}
                   {docUploadOpen && (
                     <form
                       onSubmit={handleUploadDocument}
-                      className="rounded-xl border border-blue-500/40 bg-blue-950/20 p-5 space-y-4"
+                      className="rounded-xl border border-blue-500/40 bg-gradient-to-b from-blue-950/30 to-[#0f172a] p-5 space-y-4 shadow-xl"
                     >
-                      <div className="flex justify-between items-center">
-                        <h5 className="text-xs font-semibold uppercase tracking-wider text-blue-300">
-                          Upload Document for Verification
-                        </h5>
+                      <div className="flex justify-between items-center border-b border-blue-500/20 pb-3">
+                        <div className="flex items-center gap-2">
+                          <UploadCloud className="h-4 w-4 text-blue-400" />
+                          <h5 className="text-xs font-semibold uppercase tracking-wider text-blue-300">
+                            Upload Soft Copy Document for HR Verification
+                          </h5>
+                        </div>
                         <button
                           type="button"
-                          onClick={() => setDocUploadOpen(false)}
+                          onClick={() => {
+                            setDocUploadOpen(false);
+                            setSelectedFile(null);
+                            setFileError(null);
+                          }}
                           className="text-slate-400 hover:text-white"
                         >
                           <X className="h-4 w-4" />
                         </button>
                       </div>
 
+                      {fileError && (
+                        <div className="rounded-lg border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-300 flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-red-400 shrink-0" />
+                          <span>{fileError}</span>
+                        </div>
+                      )}
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <div>
-                          <label className="text-xs font-medium text-slate-300 block mb-1">Document Category *</label>
+                          <label className="text-xs font-medium text-slate-300 block mb-1">
+                            Document Category <span className="text-red-400">*</span>
+                          </label>
                           <Select
                             value={uploadDocType}
                             onChange={(e) => setUploadDocType(e.target.value)}
@@ -1507,45 +1566,133 @@ export function EmployeeProfileDossier({
                           />
                         </div>
                         <div>
-                          <label className="text-xs font-medium text-slate-300 block mb-1">Document Title *</label>
+                          <label className="text-xs font-medium text-slate-300 block mb-1">
+                            Document Display Title <span className="text-red-400">*</span>
+                          </label>
                           <Input
                             required
                             value={uploadDocTitle}
                             onChange={(e) => setUploadDocTitle(e.target.value)}
                             placeholder="e.g. Aadhaar Card (Front & Back)"
-                            className="bg-slate-900 border-slate-700 text-xs"
+                            className="bg-slate-900 border-slate-700 text-xs text-white"
                           />
                         </div>
                       </div>
 
+                      {/* Actual File Upload Dropzone */}
                       <div>
-                        <label className="text-xs font-medium text-slate-300 block mb-1">Attached File Name</label>
-                        <Input
-                          value={uploadDocFileName}
-                          onChange={(e) => setUploadDocFileName(e.target.value)}
-                          placeholder="aadhaar_verified_proof.pdf"
-                          className="bg-slate-900 border-slate-700 text-xs font-mono"
+                        <label className="text-xs font-medium text-slate-300 block mb-1.5">
+                          Attach Soft Copy File <span className="text-red-400">*</span>
+                          <span className="text-slate-400 font-normal ml-1.5 text-[11px]">
+                            (PDF, PNG, JPG, JPEG, WEBP, DOCX • Maximum file size: 10 MB)
+                          </span>
+                        </label>
+
+                        <input
+                          ref={fileInputRef}
+                          type="file"
+                          accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                          onChange={(e) => {
+                            if (e.target.files && e.target.files.length > 0) {
+                              handleFileSelect(e.target.files[0]);
+                            }
+                          }}
+                          className="hidden"
                         />
+
+                        {!selectedFile ? (
+                          <div
+                            onClick={() => fileInputRef.current?.click()}
+                            onDragOver={handleDragOver}
+                            onDragLeave={handleDragLeave}
+                            onDrop={handleDrop}
+                            className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+                              isDragging
+                                ? "border-blue-500 bg-blue-500/10 text-white"
+                                : "border-slate-700 hover:border-blue-500/60 bg-slate-900/50 hover:bg-slate-900/80"
+                            }`}
+                          >
+                            <UploadCloud className="h-8 w-8 text-blue-400 mx-auto mb-2 animate-pulse" />
+                            <p className="text-xs font-semibold text-slate-200">
+                              Click to browse or drag and drop soft copy file here
+                            </p>
+                            <p className="text-[11px] text-slate-400 pt-1">
+                              Supports official scanned PDFs or high-resolution images up to <strong className="text-blue-400">10 MB</strong>
+                            </p>
+                          </div>
+                        ) : (
+                          <div className="rounded-xl border border-blue-500/40 bg-blue-950/40 p-4 flex items-center justify-between gap-3">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div className="p-2.5 rounded-lg bg-blue-500/20 text-blue-400 shrink-0">
+                                <FileCheck className="h-6 w-6" />
+                              </div>
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-white truncate font-mono">
+                                  {selectedFile.name}
+                                </p>
+                                <p className="text-[11px] text-emerald-400 flex items-center gap-1.5 pt-0.5">
+                                  <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                                  <span>
+                                    {(selectedFile.size / (1024 * 1024)).toFixed(2)} MB • Ready to upload
+                                  </span>
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <Button
+                                type="button"
+                                variant="outline"
+                                size="sm"
+                                onClick={() => fileInputRef.current?.click()}
+                                className="text-xs border-slate-700 text-slate-300 hover:text-white"
+                              >
+                                Change File
+                              </Button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedFile(null);
+                                  if (fileInputRef.current) fileInputRef.current.value = "";
+                                }}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                                title="Remove attached file"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
-                      <div className="flex justify-end gap-2 pt-2">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setDocUploadOpen(false)}
-                          className="text-xs text-slate-400 hover:text-white"
-                        >
-                          Cancel
-                        </Button>
-                        <Button
-                          type="submit"
-                          size="sm"
-                          disabled={uploadingDoc}
-                          className="bg-blue-600 hover:bg-blue-500 text-white text-xs"
-                        >
-                          {uploadingDoc ? "Saving..." : "Add to Vault"}
-                        </Button>
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+                        <span className="text-[11px] text-slate-400">
+                          Soft copies are securely stored in the internal personnel repository.
+                        </span>
+                        <div className="flex gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              setDocUploadOpen(false);
+                              setSelectedFile(null);
+                              setFileError(null);
+                            }}
+                            className="text-xs text-slate-400 hover:text-white"
+                          >
+                            Cancel
+                          </Button>
+                          <Button
+                            type="submit"
+                            size="sm"
+                            disabled={uploadingDoc || !selectedFile}
+                            className="bg-blue-600 hover:bg-blue-500 text-white text-xs font-semibold px-4 gap-1.5 shadow-md shadow-blue-900/30"
+                          >
+                            <UploadCloud className="h-3.5 w-3.5" />
+                            {uploadingDoc ? "Uploading..." : "Upload Soft Copy (10MB Max)"}
+                          </Button>
+                        </div>
                       </div>
                     </form>
                   )}
@@ -1564,6 +1711,11 @@ export function EmployeeProfileDossier({
                       {employee.documents.map((doc: any) => {
                         const isVerified = doc.verificationStatus === "VERIFIED";
                         const isRejected = doc.verificationStatus === "REJECTED";
+                        const formattedSize = doc.fileSize
+                          ? doc.fileSize >= 1048576
+                            ? `${(doc.fileSize / 1048576).toFixed(2)} MB`
+                            : `${Math.round(doc.fileSize / 1024)} KB`
+                          : "Soft copy attached";
 
                         return (
                           <div
@@ -1577,20 +1729,20 @@ export function EmployeeProfileDossier({
                             }`}
                           >
                             <div className="flex items-start justify-between gap-3">
-                              <div className="flex items-start gap-3">
+                              <div className="flex items-start gap-3 min-w-0">
                                 <div className={`p-2.5 rounded-lg shrink-0 ${
                                   isVerified ? "bg-emerald-500/10 text-emerald-400" : "bg-blue-500/10 text-blue-400"
                                 }`}>
                                   <FileText className="h-5 w-5" />
                                 </div>
-                                <div className="space-y-1">
-                                  <h5 className="text-xs font-bold text-white leading-tight">
+                                <div className="space-y-1 min-w-0">
+                                  <h5 className="text-xs font-bold text-white leading-tight truncate">
                                     {doc.title}
                                   </h5>
-                                  <p className="text-[11px] text-slate-400 font-mono">
-                                    {doc.fileName} • {(doc.fileSize ? (doc.fileSize / 1024).toFixed(0) : "150")} KB
+                                  <p className="text-[11px] text-slate-400 font-mono truncate">
+                                    {doc.fileName} • {formattedSize}
                                   </p>
-                                  <div className="pt-1 flex items-center gap-2">
+                                  <div className="pt-1 flex flex-wrap items-center gap-2">
                                     <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300 border border-slate-700">
                                       {doc.type}
                                     </span>
@@ -1611,13 +1763,29 @@ export function EmployeeProfileDossier({
                                 </div>
                               </div>
 
-                              <button
-                                onClick={() => handleDeleteDocument(doc.id)}
-                                className="text-slate-500 hover:text-red-400 transition-colors p-1"
-                                title="Delete document"
-                              >
-                                <Trash2 className="h-3.5 w-3.5" />
-                              </button>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                {doc.fileUrl && (
+                                  <a
+                                    href={doc.fileUrl}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-blue-950/70 hover:bg-blue-900/80 text-blue-300 hover:text-white border border-blue-800/50 text-[11px] font-medium transition-colors"
+                                    title="Open and view soft copy in new tab"
+                                  >
+                                    <Eye className="h-3 w-3 text-blue-400" />
+                                    <span>View</span>
+                                    <ExternalLink className="h-2.5 w-2.5 opacity-60" />
+                                  </a>
+                                )}
+
+                                <button
+                                  onClick={() => handleDeleteDocument(doc.id)}
+                                  className="text-slate-500 hover:text-red-400 transition-colors p-1.5 rounded-lg hover:bg-red-500/10"
+                                  title="Delete document"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
                             </div>
 
                             {/* Verification meta & actions */}

@@ -4,6 +4,8 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 import { EmployeeOnboardingService } from "@/services/employee-onboarding.service";
 import { db } from "@/lib/db";
 import { z } from "zod";
+import fs from "fs/promises";
+import path from "path";
 
 const verifySchema = z.object({
   status: z.enum(["VERIFIED", "REJECTED"]),
@@ -62,6 +64,19 @@ export async function DELETE(
     }
 
     const { id, docId } = await params;
+
+    const existingDoc = await db.employeeDocument.findUnique({
+      where: { id: docId, employeeId: id },
+    });
+
+    if (existingDoc && existingDoc.fileUrl.startsWith("/uploads/")) {
+      try {
+        const fullPath = path.join(process.cwd(), "public", existingDoc.fileUrl);
+        await fs.unlink(fullPath);
+      } catch (e) {
+        // Continue even if file already removed
+      }
+    }
 
     await db.employeeDocument.delete({
       where: { id: docId, employeeId: id },

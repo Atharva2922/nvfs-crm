@@ -47,3 +47,7 @@ next-env.d.ts
 *.db-journal
 *.db-shm
 *.db-wal
+
+# uploaded document soft copies
+/public/uploads/*
+!/public/uploads/employee-documents/.gitkeep
