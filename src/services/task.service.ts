@@ -103,6 +103,8 @@ export class TaskService {
     creator: AuthenticatedUser,
     assigneeEmp: {
       id: string;
+      firstName?: string;
+      lastName?: string;
       department?: { code: string; name: string } | null;
       user?: { role?: { code: string; name: string } | null } | null;
       managerId?: string | null;
@@ -125,10 +127,25 @@ export class TaskService {
       throw new Error("Forbidden: Standard employees can only create and manage tasks assigned to themselves.");
     }
 
+    // Direct Line Manager check: Line managers can only assign tasks to their own direct line reports
+    const isExecutiveLeader =
+      ["SUPER_ADMIN", "ADMIN", "CHAIRPERSON", "CEO", "HR", "COO", "CFO", "CIO", "CTO", "CMO"].includes(creator.roleCode) ||
+      (creator.roleLevel ?? 0) >= 70;
+
+    if (!isExecutiveLeader) {
+      if (assigneeEmp.managerId !== creatorId) {
+        const empName = assigneeEmp.firstName ? ` (${assigneeEmp.firstName} ${assigneeEmp.lastName || ""})` : "";
+        throw new Error(
+          `Forbidden: As a Line Manager, you can only assign tasks to your assigned direct line reports${empName}.`
+        );
+      }
+      return;
+    }
+
     const assigneeRole = assigneeEmp.user?.role?.code || "";
     const assigneeDept = assigneeEmp.department?.code || "";
 
-    // Assigning corporate tasks to staff employees is permitted for authorized creators
+    // Assigning corporate tasks to staff employees is permitted for authorized executive creators
     if (assigneeRole === "EMPLOYEE" || !assigneeRole) return;
 
     // ADMIN: Oversees and directs executive CXOs and leadership
@@ -284,8 +301,18 @@ export class TaskService {
     if (filters.departmentId && filters.departmentId !== "ALL") where.departmentId = filters.departmentId;
 
     if (filters.assigneeId && filters.assigneeId !== "ALL") {
-      if (!isSuperAdmin && !isExec && !isDeptHead && !isManagerRole && filters.assigneeId !== empId) {
+      if (!isSuperAdmin && !isExec && !isDeptHead && !isManagerRole) {
         where.assigneeId = empId;
+      } else if (isManagerRole && !isExec && !isSuperAdmin && filters.assigneeId !== empId) {
+        const isDirectReport = await db.employee.findFirst({
+          where: { id: filters.assigneeId, managerId: empId },
+          select: { id: true },
+        });
+        if (isDirectReport) {
+          where.assigneeId = filters.assigneeId;
+        } else {
+          where.assigneeId = empId;
+        }
       } else {
         where.assigneeId = filters.assigneeId;
       }

@@ -92,6 +92,8 @@ interface EmployeeOption {
   isFree?: boolean;
   busyReason?: string | null;
   activeTasksCount?: number;
+  managerId?: string | null;
+  manager?: { id: string; firstName?: string; lastName?: string } | null;
   user?: { email?: string; role?: { code?: string; name?: string; level?: number } | null } | null;
 }
 
@@ -315,11 +317,21 @@ export default function TasksPage() {
     }
   };
 
-  // Strictly filter to regular staff employees — NO EXECUTIVES OR LEADERSHIP
-  const staffEmployees = useMemo(
-    () => employees.filter((e) => !isExecutiveOrLeadership(e)),
-    [employees]
-  );
+  // For Executives / Super Admin / HR: all regular staff employees
+  // For Line Managers: strictly their assigned direct line reports
+  const staffEmployees = useMemo(() => {
+    const nonExec = employees.filter((e) => !isExecutiveOrLeadership(e));
+    if (isSuperAdmin || isExecutive) {
+      return nonExec;
+    }
+    const myEmpId = user?.employee?.id;
+    if (isManager && myEmpId) {
+      return nonExec.filter(
+        (e) => e.managerId === myEmpId || e.manager?.id === myEmpId
+      );
+    }
+    return [];
+  }, [employees, isSuperAdmin, isExecutive, isManager, user?.employee?.id]);
 
   // Assignee dropdown state
   const [assigneeSearch, setAssigneeSearch] = useState("");
@@ -580,10 +592,18 @@ export default function TasksPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <PageHeader
-          title={isLeaderOrExec ? "Company Tasks & Activity" : "My Tasks & Activity"}
+          title={
+            isSuperAdmin || isExecutive
+              ? "Company Tasks & Activity"
+              : isManager
+              ? "Team Tasks & Activity"
+              : "My Tasks & Activity"
+          }
           description={
-            isLeaderOrExec
+            isSuperAdmin || isExecutive
               ? "Hierarchical task delegation, departmental deliverables, status lifecycle, and collaboration threads."
+              : isManager
+              ? "Manage direct reports' deliverables, operational tracking, and direct line delegation."
               : "Personal task tracker, assigned deliverables, status lifecycle, and collaboration updates."
           }
         />
@@ -663,7 +683,7 @@ export default function TasksPage() {
           {/* Scope Dropdown */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Scope:</span>
-            {isLeaderOrExec ? (
+            {isSuperAdmin || isExecutive ? (
               <select
                 value={scope}
                 onChange={(e) => {
@@ -675,6 +695,18 @@ export default function TasksPage() {
                 <option value="all">Entire Organization</option>
                 <option value="my">My Assigned</option>
                 <option value="department">My Department</option>
+              </select>
+            ) : isManager ? (
+              <select
+                value={scope}
+                onChange={(e) => {
+                  setScope(e.target.value as "all" | "my" | "department");
+                  setPage(1);
+                }}
+                className="h-7 rounded border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="all">My Direct Line Team</option>
+                <option value="my">My Assigned Tasks Only</option>
               </select>
             ) : (
               <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 text-xs text-blue-400 font-medium">
@@ -699,7 +731,7 @@ export default function TasksPage() {
           </div>
 
           {/* Assignee Filter — Leadership & Management Only */}
-          {isLeaderOrExec && (
+          {isLeaderOrExec && staffEmployees.length > 0 && (
             <select
               value={assigneeFilter}
               onChange={(e) => {
@@ -708,7 +740,9 @@ export default function TasksPage() {
               }}
               className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[200px]"
             >
-              <option value="ALL">All Assignees</option>
+              <option value="ALL">
+                {isSuperAdmin || isExecutive ? "All Assignees" : "All Direct Reports"}
+              </option>
               {staffEmployees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
                   {emp.isFree ? "🟢" : "🟡"} {emp.firstName} {emp.lastName} ({emp.designation})

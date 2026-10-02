@@ -38,7 +38,7 @@ import {
   AlertTriangle,
   Key,
 } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, cn } from "@/lib/utils";
 
 interface EmployeeProfileDossierProps {
   initialEmployee: any;
@@ -987,8 +987,9 @@ export function EmployeeProfileDossier({
                       />
                     </div>
                     <div>
-                      <label className="text-xs font-medium text-slate-300 block mb-1.5">Reporting Manager</label>
+                      <label className="text-xs font-medium text-slate-300 block mb-1.5">Direct Line Manager</label>
                       <Select
+                        disabled={!isHrOrAdmin && !isExecutive}
                         value={formData.managerId}
                         onChange={(e) => handleInputChange("managerId", e.target.value)}
                         options={[
@@ -1000,8 +1001,16 @@ export function EmployeeProfileDossier({
                               label: `${m.firstName} ${m.lastName} (${m.designation})`,
                             })),
                         ]}
-                        className="bg-slate-900 border-slate-800 text-xs"
+                        className={cn(
+                          "bg-slate-900 border-slate-800 text-xs",
+                          !isHrOrAdmin && !isExecutive && "opacity-60 cursor-not-allowed"
+                        )}
                       />
+                      <p className="text-[10px] text-slate-400 mt-1">
+                        {!isHrOrAdmin && !isExecutive
+                          ? "Direct reporting line is designated by HR / Executive Management."
+                          : "This assigned manager has exclusive operational oversight of this employee's tasks."}
+                      </p>
                     </div>
                     <div>
                       <label className="text-xs font-medium text-slate-300 block mb-1.5">Date of Joining / Hire Date *</label>
