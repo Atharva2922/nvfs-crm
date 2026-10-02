@@ -222,74 +222,72 @@ export async function DELETE(
       return errorResponse("Super Administrator accounts cannot be deleted", "FORBIDDEN", 403);
     }
 
-    // Clean up dependent / relational records in a safe transaction
-    await db.$transaction(async (tx) => {
-      // 1. Unlink manager references on other employees
-      await tx.employee.updateMany({
-        where: { managerId: id },
-        data: { managerId: null },
-      });
-
-      // 2. Unlink department manager & team leader
-      await tx.department.updateMany({
-        where: { managerId: id },
-        data: { managerId: null },
-      });
-      await tx.team.updateMany({
-        where: { leaderId: id },
-        data: { leaderId: null },
-      });
-
-      // 3. Tasks assigned or created
-      await tx.taskComment.deleteMany({ where: { authorId: id } }).catch(() => {});
-      await tx.task.updateMany({ where: { assigneeId: id }, data: { assigneeId: null } }).catch(() => {});
-      await tx.task.deleteMany({ where: { creatorId: id } }).catch(() => {});
-
-      // 4. CRM ownership unlinking & activities
-      await tx.crmActivity.deleteMany({ where: { performedById: id } }).catch(() => {});
-      await tx.client.updateMany({ where: { ownerId: id }, data: { ownerId: null } }).catch(() => {});
-      await tx.lead.updateMany({ where: { ownerId: id }, data: { ownerId: null } }).catch(() => {});
-      await tx.opportunity.updateMany({ where: { ownerId: id }, data: { ownerId: null } }).catch(() => {});
-
-      // 5. Communications & Calendar
-      await tx.conversationParticipant.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.message.deleteMany({ where: { senderId: id } }).catch(() => {});
-      await tx.conversation.deleteMany({ where: { createdById: id } }).catch(() => {});
-      await tx.calendarEvent.deleteMany({ where: { creatorId: id } }).catch(() => {});
-      await tx.announcementRead.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.announcement.deleteMany({ where: { authorId: id } }).catch(() => {});
-
-      // 6. Operations & Requests
-      await tx.operationEmployee.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.employeeRequest.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.onDutyAssignment.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.approvalRequest.deleteMany({ where: { requestedById: id } }).catch(() => {});
-      await tx.approvalRequest.updateMany({ where: { approverId: id }, data: { approverId: null } }).catch(() => {});
-
-      // 7. Finance & Expenses
-      await tx.expense.deleteMany({ where: { employeeId: id } }).catch(() => {});
-
-      // 8. HR records
-      await tx.attendanceRecord.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.leaveRequest.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.leaveBalance.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.employeeSalaryStructure.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.payrollEntry.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.employeeDocument.deleteMany({ where: { employeeId: id } }).catch(() => {});
-      await tx.employeeProfile.deleteMany({ where: { employeeId: id } }).catch(() => {});
-
-      // 9. Delete the employee record
-      await tx.employee.delete({ where: { id } });
-
-      // 10. Delete associated user account if one exists
-      if (employee.userId) {
-        await tx.userCompanyMembership.deleteMany({ where: { userId: employee.userId } }).catch(() => {});
-        await tx.userSetting.deleteMany({ where: { userId: employee.userId } }).catch(() => {});
-        await tx.dashboardPreference.deleteMany({ where: { userId: employee.userId } }).catch(() => {});
-        await tx.auditLog.updateMany({ where: { actorId: employee.userId }, data: { actorId: null } }).catch(() => {});
-        await tx.user.delete({ where: { id: employee.userId } }).catch(() => {});
-      }
+    // Clean up dependent / relational records sequentially (pooler-safe)
+    // 1. Unlink manager references on other employees
+    await db.employee.updateMany({
+      where: { managerId: id },
+      data: { managerId: null },
     });
+
+    // 2. Unlink department manager & team leader
+    await db.department.updateMany({
+      where: { managerId: id },
+      data: { managerId: null },
+    });
+    await db.team.updateMany({
+      where: { leaderId: id },
+      data: { leaderId: null },
+    });
+
+    // 3. Tasks assigned or created
+    await db.taskComment.deleteMany({ where: { authorId: id } }).catch(() => {});
+    await db.task.updateMany({ where: { assigneeId: id }, data: { assigneeId: null } }).catch(() => {});
+    await db.task.deleteMany({ where: { creatorId: id } }).catch(() => {});
+
+    // 4. CRM ownership unlinking & activities
+    await db.crmActivity.deleteMany({ where: { performedById: id } }).catch(() => {});
+    await db.client.updateMany({ where: { ownerId: id }, data: { ownerId: null } }).catch(() => {});
+    await db.lead.updateMany({ where: { ownerId: id }, data: { ownerId: null } }).catch(() => {});
+    await db.opportunity.updateMany({ where: { ownerId: id }, data: { ownerId: null } }).catch(() => {});
+
+    // 5. Communications & Calendar
+    await db.conversationParticipant.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.message.deleteMany({ where: { senderId: id } }).catch(() => {});
+    await db.conversation.deleteMany({ where: { createdById: id } }).catch(() => {});
+    await db.calendarEvent.deleteMany({ where: { creatorId: id } }).catch(() => {});
+    await db.announcementRead.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.announcement.deleteMany({ where: { authorId: id } }).catch(() => {});
+
+    // 6. Operations & Requests
+    await db.operationEmployee.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.employeeRequest.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.onDutyAssignment.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.approvalRequest.deleteMany({ where: { requestedById: id } }).catch(() => {});
+    await db.approvalRequest.updateMany({ where: { approverId: id }, data: { approverId: null } }).catch(() => {});
+
+    // 7. Finance & Expenses
+    await db.expense.deleteMany({ where: { employeeId: id } }).catch(() => {});
+
+    // 8. HR records
+    await db.attendanceRecord.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.leaveRequest.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.leaveBalance.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.employeeSalaryStructure.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.payrollEntry.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.employeeDocument.deleteMany({ where: { employeeId: id } }).catch(() => {});
+    await db.employeeProfile.deleteMany({ where: { employeeId: id } }).catch(() => {});
+
+    // 9. Delete the employee record
+    await db.employee.delete({ where: { id } });
+
+    // 10. Delete associated user account if one exists
+    if (employee.userId) {
+      await db.userCompanyMembership.deleteMany({ where: { userId: employee.userId } }).catch(() => {});
+      await db.userSetting.deleteMany({ where: { userId: employee.userId } }).catch(() => {});
+      await db.dashboardPreference.deleteMany({ where: { userId: employee.userId } }).catch(() => {});
+      await db.auditLog.updateMany({ where: { actorId: employee.userId }, data: { actorId: null } }).catch(() => {});
+      await db.user.delete({ where: { id: employee.userId } }).catch(() => {});
+    }
 
     // Audit log
     await AuditService.logMutation({
@@ -311,8 +309,8 @@ export async function DELETE(
     return successResponse({
       message: `Employee ${employee.firstName} ${employee.lastName} (${employee.employeeNumber}) deleted successfully`,
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error("[Employee DELETE Error]:", error);
-    return errorResponse("Failed to delete employee", "INTERNAL_ERROR", 500);
+    return errorResponse(error?.message || "Failed to delete employee", "INTERNAL_ERROR", 500);
   }
 }
