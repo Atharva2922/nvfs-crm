@@ -98,7 +98,10 @@ export function CommunicationHub() {
       const res = await fetch("/api/employees?limit=100");
       if (res.ok) {
         const data = await res.json();
-        const emps = (data.data?.employees || data.employees || []).map((e: any) => ({
+        const rawList = Array.isArray(data.data)
+          ? data.data
+          : data.data?.employees || data.employees || [];
+        const emps = rawList.map((e: any) => ({
           id: e.id,
           name: `${e.firstName || ""} ${e.lastName || ""}`.trim() || e.user?.name || e.email,
           email: e.email || e.user?.email,
@@ -117,7 +120,7 @@ export function CommunicationHub() {
       const res = await fetch("/api/communications/conversations");
       if (res.ok) {
         const data = await res.json();
-        const convs = data.data.conversations || [];
+        const convs = data.data?.conversations || data.conversations || [];
         setConversations(convs);
 
         // Select first conversation if none selected
@@ -138,7 +141,7 @@ export function CommunicationHub() {
       const res = await fetch(`/api/communications/conversations/${conversationId}/messages?limit=50`);
       if (res.ok) {
         const data = await res.json();
-        setMessages(data.data.messages || []);
+        setMessages(data.data?.messages || data.messages || []);
       }
     } catch (e) {
       console.error("Failed to fetch messages:", e);
@@ -296,7 +299,7 @@ export function CommunicationHub() {
         setCreateDesc("");
         setCreateTargetEmpId("");
         await fetchConversations();
-        setSelectedConversation(data.data.conversation);
+        setSelectedConversation(data.data?.conversation || data.conversation);
       }
     } catch (e) {
       console.error("Create conversation error:", e);
@@ -560,8 +563,15 @@ export function CommunicationHub() {
                 </div>
               ) : (
                 messages.map((msg) => {
-                  const isMine = msg.senderId === user?.employee?.id;
-                  const senderName = msg.sender?.user?.name || "Colleague";
+                  const isMine =
+                    msg.isMine ??
+                    (msg.senderId === user?.employee?.id ||
+                      (user?.id && msg.sender?.userId === user.id));
+                  const senderName =
+                    [msg.sender?.firstName, msg.sender?.lastName].filter(Boolean).join(" ") ||
+                    msg.sender?.user?.name ||
+                    msg.sender?.email ||
+                    "Colleague";
 
                   return (
                     <div

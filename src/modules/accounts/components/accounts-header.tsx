@@ -344,9 +344,6 @@ export function AccountsHeader({
         {/* Theme Toggle */}
         <ThemeToggle />
 
-        {/* Global AI Intelligence Assistant */}
-        <GlobalAIButton />
-
         {/* Communication Widget */}
         <CommunicationHeaderWidget />
 

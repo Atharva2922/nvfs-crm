@@ -1,6 +1,7 @@
 import { NextRequest } from "next/server";
 import { getCurrentUser } from "@/lib/auth";
 import { AnnouncementService } from "@/services/announcement.service";
+import { CommunicationService } from "@/services/communication.service";
 import { successResponse, errorResponse } from "@/lib/api-response";
 import { z } from "zod";
 
@@ -18,8 +19,13 @@ const createAnnouncementSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
+
+    const emp = await CommunicationService.resolveRealEmployee(user);
+    if (!emp) {
+      return errorResponse("No employee record found", "UNAUTHORIZED", 401);
     }
 
     const { searchParams } = new URL(req.url);
@@ -27,8 +33,8 @@ export async function GET(req: NextRequest) {
     const limit = parseInt(searchParams.get("limit") || "20", 10);
 
     const result = await AnnouncementService.getAnnouncements(
-      user.employee.id,
-      user.employee.organizationId,
+      emp.id,
+      emp.organizationId,
       page,
       limit
     );
@@ -43,8 +49,13 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
+
+    const emp = await CommunicationService.resolveRealEmployee(user);
+    if (!emp) {
+      return errorResponse("No employee record found", "UNAUTHORIZED", 401);
     }
 
     // Role check: Only authorized roles can publish company-wide/dept announcements
@@ -55,9 +66,12 @@ export async function POST(req: NextRequest) {
       "CTO",
       "CMO",
       "CFO",
+      "COO",
       "ADMIN",
+      "HR",
       "HR_MANAGER",
       "DEPARTMENT_HEAD",
+      "MANAGER",
       "OPERATIONS_MANAGER",
     ];
 
@@ -74,8 +88,8 @@ export async function POST(req: NextRequest) {
     const { title, content, priority, audience, departmentId, targetRoles, expiresAt, attachments } = validated.data;
 
     const announcement = await AnnouncementService.createAnnouncement({
-      organizationId: user.employee.organizationId,
-      authorId: user.employee.id,
+      organizationId: emp.organizationId,
+      authorId: emp.id,
       title,
       content,
       priority,
@@ -92,3 +106,4 @@ export async function POST(req: NextRequest) {
     return errorResponse(error.message || "Failed to publish announcement", "INTERNAL_ERROR", 500);
   }
 }
+

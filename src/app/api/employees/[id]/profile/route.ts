@@ -46,12 +46,25 @@ export async function PUT(
 
     const { id } = await params;
 
-    // Self-edit is allowed for own profile completion, or HR / Admin
+    // Self-edit is allowed for own profile completion, or HR / Admin / CEO / CXO / Dept Head of that employee
     const isSelf = user.employee?.id === id;
-    const isHrOrAdmin = ["SUPER_ADMIN", "ADMIN", "CEO", "HR"].includes(user.roleCode);
+    const isLeadership = [
+      "SUPER_ADMIN",
+      "ADMIN",
+      "CEO",
+      "CHAIRPERSON",
+      "HR",
+      "COO",
+      "CFO",
+      "CTO",
+      "CIO",
+      "CMO",
+      "DEPARTMENT_HEAD",
+    ].includes(user.roleCode);
     const hasPermission = await RbacService.hasPermission(user.id, "employees.employee.update");
+    const canAccess = await RbacService.canAccessEmployee(user, id);
 
-    if (!isSelf && !isHrOrAdmin && !hasPermission) {
+    if (!isSelf && !isLeadership && !hasPermission && !canAccess) {
       return errorResponse("Forbidden: You cannot modify this employee profile", "FORBIDDEN", 403);
     }
 

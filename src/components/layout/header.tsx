@@ -283,9 +283,6 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
         {/* Theme Toggle */}
         <ThemeToggle />
 
-        {/* Global AI Intelligence Assistant */}
-        <GlobalAIButton />
-
         {/* Communication Widget */}
         <CommunicationHeaderWidget />
 
@@ -380,6 +377,15 @@ export function Header({ currentRole = "SUPER_ADMIN", onRoleChange }: HeaderProp
 
               {/* Navigation Options */}
               <div className="pt-2 border-t border-slate-200 dark:border-slate-800/80 mt-2 space-y-0.5">
+                <Link
+                  href="/app/profile"
+                  onClick={() => setRoleDropdownOpen(false)}
+                  className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors"
+                >
+                  <User className="h-3.5 w-3.5 shrink-0" />
+                  <span>My Profile & Completion</span>
+                </Link>
+
                 <Link
                   href="/app/settings"
                   onClick={() => setRoleDropdownOpen(false)}

@@ -9,11 +9,11 @@ import { LeaveBalanceWidget } from "@/components/dashboard/widgets/LeaveBalanceW
 import { UpcomingMeetingsWidget } from "@/components/dashboard/widgets/UpcomingMeetingsWidget";
 import { RecentNotificationsWidget } from "@/components/dashboard/widgets/RecentNotificationsWidget";
 import { ExpenseWidget } from "@/components/dashboard/widgets/ExpenseWidget";
-import { RequestWidget } from "@/components/dashboard/widgets/RequestWidget";
 import { OnDutyWidget } from "@/components/dashboard/widgets/OnDutyWidget";
 import { AnnouncementWidget } from "@/components/dashboard/widgets/AnnouncementWidget";
 import { QuickActionsWidget } from "@/components/dashboard/widgets/QuickActionsWidget";
 import { EmployeeSectionWidget } from "@/components/dashboard/widgets/EmployeeSectionWidget";
+import { ProfileCompletionWidget } from "@/components/dashboard/widgets/ProfileCompletionWidget";
 import { Badge } from "@/components/ui/badge";
 import { Sparkles, Users, Building2 } from "lucide-react";
 import { OverviewDashboardService } from "@/services/overview-dashboard.service";
@@ -84,6 +84,9 @@ export default async function AppOverviewPage() {
       {/* Quick Action Bar */}
       <QuickActionsWidget permissions={user.permissions || []} roleLevel={user.roleLevel || 10} />
 
+      {/* Dynamic Profile Completion & Self-Service Widget */}
+      <ProfileCompletionWidget employeeName={employeeName} />
+
       {/* Dedicated Corporate Employee & Personnel Directory Section */}
       <EmployeeSectionWidget
         companyName={companyName}
@@ -107,7 +110,6 @@ export default async function AppOverviewPage() {
         <RecentNotificationsWidget initialNotifications={telemetry?.recentNotifications} />
 
         <ExpenseWidget initialSummary={telemetry?.expenses} />
-        <RequestWidget initialData={telemetry?.requests} />
         <OnDutyWidget initialDuties={telemetry?.onDuty?.recentTrips} />
       </div>
 

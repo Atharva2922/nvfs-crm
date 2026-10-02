@@ -18,7 +18,7 @@ export async function GET(
 ) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 
@@ -47,7 +47,7 @@ export async function POST(
 ) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 

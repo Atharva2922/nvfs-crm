@@ -6,7 +6,7 @@ import { successResponse, errorResponse } from "@/lib/api-response";
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 

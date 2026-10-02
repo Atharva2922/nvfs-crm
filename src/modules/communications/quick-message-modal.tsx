@@ -54,7 +54,10 @@ export function QuickMessageModal({
       const res = await fetch("/api/employees?limit=100");
       if (res.ok) {
         const data = await res.json();
-        const emps = (data.data?.employees || data.employees || []).map((e: any) => ({
+        const rawList = Array.isArray(data.data)
+          ? data.data
+          : data.data?.employees || data.employees || [];
+        const emps = rawList.map((e: any) => ({
           id: e.id,
           name: `${e.firstName || ""} ${e.lastName || ""}`.trim() || e.user?.name || e.email,
           email: e.email || e.user?.email,

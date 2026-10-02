@@ -19,7 +19,7 @@ const createConversationSchema = z.object({
 export async function GET(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 
@@ -44,7 +44,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 

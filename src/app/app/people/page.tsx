@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Link from "next/link";
 import { PageHeader } from "@/components/layout/page-header";
 import { Badge } from "@/components/ui/badge";
-import { Users, Mail, Phone, Building, User, Search } from "lucide-react";
+import { Users, Mail, Phone, Building, User, Search, ExternalLink } from "lucide-react";
 
 interface PersonItem {
   id: string;
@@ -17,6 +18,7 @@ interface PersonItem {
   managerName?: string | null;
   avatarUrl?: string | null;
   workMode: string;
+  profileCompletion: number;
 }
 
 export default function CompanyPeoplePage() {
@@ -46,6 +48,7 @@ export default function CompanyPeoplePage() {
                 managerName: e.manager ? `${e.manager.firstName} ${e.manager.lastName}` : "N/A",
                 avatarUrl: e.avatarUrl,
                 workMode: e.workMode,
+                profileCompletion: e.profileCompletion ?? 20,
               }))
             );
           }
@@ -149,16 +152,37 @@ export default function CompanyPeoplePage() {
                   {person.designation}
                 </p>
 
-                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1 text-[11px] text-slate-500 dark:text-slate-400">
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                   <div className="flex items-center gap-1.5 truncate">
                     <Building className="h-3 w-3 text-slate-400" />
                     <span>{person.departmentName || "General"}</span>
                   </div>
-                  <div className="flex items-center gap-1.5 truncate">
-                    <Mail className="h-3 w-3 text-blue-500" />
-                    <a href={`mailto:${person.email}`} className="hover:underline truncate">
-                      {person.email}
-                    </a>
+                  <div className="flex items-center justify-between gap-1 text-[11px]">
+                    <div className="flex items-center gap-1.5 truncate">
+                      <Mail className="h-3 w-3 text-blue-500" />
+                      <a href={`mailto:${person.email}`} className="hover:underline truncate">
+                        {person.email}
+                      </a>
+                    </div>
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold shrink-0 ${
+                        person.profileCompletion >= 80
+                          ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+                      }`}
+                    >
+                      {person.profileCompletion}%
+                    </span>
+                  </div>
+
+                  <div className="pt-1 flex items-center justify-end">
+                    <Link
+                      href={`/app/hr/employees/${person.id}`}
+                      className="inline-flex items-center gap-1 text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+                    >
+                      <span>View Profile & Dossier</span>
+                      <ExternalLink className="h-2.5 w-2.5" />
+                    </Link>
                   </div>
                 </div>
               </div>

@@ -69,9 +69,13 @@ export function AnnouncementsView() {
     "CTO",
     "CMO",
     "CFO",
+    "COO",
     "ADMIN",
+    "HR",
     "HR_MANAGER",
     "DEPARTMENT_HEAD",
+    "MANAGER",
+    "OPERATIONS_MANAGER",
   ].includes(role);
 
   const fetchAnnouncements = async () => {

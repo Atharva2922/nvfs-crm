@@ -85,6 +85,11 @@ export class RbacService {
     });
     if (!target) return false;
 
+    // Direct departmental match (Department Heads, CXOs, or colleagues of that department)
+    if (actor.employee?.departmentId && actor.employee.departmentId === target.departmentId) {
+      return true;
+    }
+
     // Department Head access
     if (actor.roleCode === "DEPARTMENT_HEAD") {
       return actor.employee?.departmentId === target.departmentId;

@@ -279,30 +279,45 @@ export default async function AppHrDashboardPage() {
           </div>
 
           <div className="space-y-3">
-            {employees.map((emp) => (
-              <div
-                key={emp.id}
-                className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/40 flex items-center justify-between gap-3 text-xs"
-              >
-                <div className="flex items-center gap-3 truncate">
-                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400 font-bold text-xs">
-                    {emp.firstName[0]}
-                    {emp.lastName[0]}
+            {employees.map((emp) => {
+              const comp = (emp as any).profileCompletion ?? 20;
+              return (
+                <Link
+                  key={emp.id}
+                  href={`/app/hr/employees/${emp.id}`}
+                  className="p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-white dark:hover:bg-slate-850 hover:border-blue-500/30 transition-all flex items-center justify-between gap-3 text-xs group"
+                >
+                  <div className="flex items-center gap-3 truncate">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-600/10 text-blue-600 dark:text-blue-400 font-bold text-xs group-hover:scale-105 transition-transform">
+                      {emp.firstName[0]}
+                      {emp.lastName[0]}
+                    </div>
+                    <div className="flex flex-col truncate">
+                      <span className="font-semibold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                        {emp.firstName} {emp.lastName}
+                      </span>
+                      <span className="text-[11px] text-slate-500">
+                        {emp.designation} • {emp.department?.name || "General"}
+                      </span>
+                    </div>
                   </div>
-                  <div className="flex flex-col truncate">
-                    <span className="font-semibold text-slate-900 dark:text-white truncate">
-                      {emp.firstName} {emp.lastName}
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold ${
+                        comp >= 80
+                          ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20"
+                          : "bg-amber-500/10 text-amber-500 border border-amber-500/20"
+                      }`}
+                    >
+                      {comp}% Profile
                     </span>
-                    <span className="text-[11px] text-slate-500">
-                      {emp.designation} • {emp.department?.name || "General"}
+                    <span className="font-mono text-[10px] text-slate-400">
+                      {emp.employeeNumber}
                     </span>
                   </div>
-                </div>
-                <span className="font-mono text-[10px] text-slate-400 shrink-0">
-                  {emp.employeeNumber}
-                </span>
-              </div>
-            ))}
+                </Link>
+              );
+            })}
           </div>
         </div>
 

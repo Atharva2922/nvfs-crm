@@ -29,6 +29,7 @@ export interface EmployeeRosterItem {
   roleCode: string | null;
   avatarUrl?: string | null;
   employmentStatus: string;
+  profileCompletion?: number;
 }
 
 export interface EmployeeSectionWidgetProps {
@@ -214,12 +215,13 @@ export function EmployeeSectionWidget({
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5">
           {employees.map((emp) => {
             const role = emp.roleCode || "EMPLOYEE";
+            const completion = emp.profileCompletion ?? 20;
             const badgeStyle = getRoleBadgeColor(role);
 
             return (
               <Link
                 key={emp.id}
-                href="/app/hr/employees"
+                href={`/app/hr/employees/${emp.id}`}
                 className="group relative rounded-xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/40 p-3.5 hover:border-blue-500/50 dark:hover:border-amber-500/40 hover:bg-white dark:hover:bg-slate-900 transition-all hover:shadow-md block"
               >
                 <div className="flex items-start justify-between gap-2">
@@ -228,20 +230,31 @@ export function EmployeeSectionWidget({
                     size="md"
                     className="ring-2 ring-slate-200 dark:ring-slate-800 group-hover:ring-blue-500/50 dark:group-hover:ring-amber-500/50 transition-all"
                   />
-                  <div className="flex items-center gap-1">
+                  <div className="flex flex-col items-end gap-1">
                     <span
                       className={`px-1.5 py-0.5 rounded text-[9px] font-mono font-bold border uppercase tracking-wider ${badgeStyle}`}
                     >
                       {role}
                     </span>
-                    <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-mono font-semibold ${
+                        completion >= 80
+                          ? "text-emerald-500 dark:text-emerald-400 bg-emerald-500/10"
+                          : "text-amber-500 dark:text-amber-400 bg-amber-500/10"
+                      }`}
+                    >
+                      {completion}% Profile
+                    </span>
                   </div>
                 </div>
 
                 <div className="mt-2.5 space-y-0.5">
-                  <h4 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-amber-400 transition-colors truncate">
-                    {emp.firstName} {emp.lastName}
-                  </h4>
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-blue-600 dark:group-hover:text-amber-400 transition-colors truncate">
+                      {emp.firstName} {emp.lastName}
+                    </h4>
+                    <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+                  </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
                     {emp.designation}
                   </p>

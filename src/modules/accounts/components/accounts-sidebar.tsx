@@ -231,7 +231,6 @@ export function AccountsSidebar() {
         { title: "My Salary & Payslips", href: "/app/payroll/my-payslips", icon: FileCheck },
         { title: "My Documents", href: "/app/documents", icon: FileText },
         { title: "Request Center", href: "/app/requests", icon: MessageSquare },
-        { title: "AI Intelligence", href: "/app/ai", icon: Sparkles },
         { title: "Communications", href: "/app/communications", icon: MessageSquare },
         { title: "Calendar", href: "/app/calendar", icon: Calendar },
         { title: "Personal Settings", href: "/app/settings", icon: Settings },

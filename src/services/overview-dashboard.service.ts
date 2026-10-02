@@ -330,6 +330,7 @@ export class OverviewDashboardService {
           designation: true,
           avatarUrl: true,
           employmentStatus: true,
+          profileCompletion: true,
           department: { select: { name: true } },
           user: { select: { role: { select: { code: true } } } },
         },
@@ -496,6 +497,7 @@ export class OverviewDashboardService {
           roleCode: e.user?.role?.code || null,
           avatarUrl: e.avatarUrl,
           employmentStatus: e.employmentStatus,
+          profileCompletion: (e as any).profileCompletion ?? 20,
         })),
       },
     };

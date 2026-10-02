@@ -16,7 +16,6 @@ import { CeoCriticalAlerts } from "./ceo-critical-alerts";
 import { CeoActivityTimeline } from "./ceo-activity-timeline";
 import { CeoUpcomingEvents } from "./ceo-upcoming-events";
 import { CeoQuickActions } from "./ceo-quick-actions";
-import { ExecutiveAIAdvisor } from "../ai/executive-ai-advisor";
 import { CeoDashboardFilters } from "@/services/ceo-dashboard.service";
 import { AlertTriangle, RefreshCw } from "lucide-react";
 
@@ -114,9 +113,6 @@ export function CeoDashboardView({ currentUser, initialData }: CeoDashboardViewP
 
       {/* 3. Critical Attention Alerts (Operational, Financial, Legal, Stock) */}
       <CeoCriticalAlerts alerts={data?.criticalAlerts || []} />
-
-      {/* Executive AI Strategic Advisor */}
-      <ExecutiveAIAdvisor />
 
       {/* 4. Top-Level Company Performance KPI Cards */}
       {data?.kpis && <CeoKpiGrid kpis={data.kpis} />}

@@ -77,12 +77,70 @@ export class CommunicationService {
   }
 
   /**
+   * Helper: Resolves a valid database Employee record for the user (even if session has virtual employee)
+   */
+  static async resolveRealEmployee(user: AuthenticatedUser) {
+    let orgId = user.activeCompany?.id || user.employee?.organizationId;
+    if (!orgId) {
+      const activeOrg = await db.organization.findFirst({ where: { status: { not: "ARCHIVED" } } });
+      orgId = activeOrg?.id;
+    }
+
+    if (user.employee?.id && !user.employee.id.startsWith("virtual_")) {
+      const found = await db.employee.findUnique({ where: { id: user.employee.id } });
+      if (found) return found;
+    }
+
+    let emp = await db.employee.findFirst({
+      where: {
+        OR: [{ userId: user.id }, { email: user.email }],
+      },
+    });
+
+    if (!emp && orgId) {
+      let dept = await db.department.findFirst({ where: { organizationId: orgId } });
+      if (!dept) {
+        dept = await db.department.create({
+          data: { organizationId: orgId, name: "General Administration", code: "ADMIN" },
+        });
+      }
+      const org = await db.organization.findUnique({ where: { id: orgId } });
+      const count = await db.employee.count({ where: { organizationId: orgId } });
+      const empNumber = `${org?.code || "EMP"}-${String(count + 1).padStart(4, "0")}`;
+      const nameParts = (user.employee ? `${user.employee.firstName} ${user.employee.lastName}` : user.email.split("@")[0]).split(" ");
+      const firstName = nameParts[0] || "User";
+      const lastName = nameParts.slice(1).join(" ") || "Account";
+
+      emp = await db.employee.create({
+        data: {
+          userId: user.id,
+          organizationId: orgId,
+          departmentId: dept.id,
+          employeeNumber: empNumber,
+          firstName,
+          lastName,
+          email: user.email,
+          designation: user.roleName || "Staff Member",
+          employmentType: "FULL_TIME",
+          employmentStatus: "ACTIVE",
+          workMode: "ON_SITE",
+          location: "Headquarters (Mumbai)",
+          hireDate: new Date(),
+        },
+      });
+    }
+
+    return emp;
+  }
+
+  /**
    * Get or create a 1:1 Direct Message conversation
    */
   static async getOrCreateDirectConversation(user: AuthenticatedUser, otherEmployeeId: string) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const orgId = user.employee.organizationId;
-    const currentEmpId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) throw new Error("Authenticated user has no employee profile");
+    const orgId = currentEmp.organizationId;
+    const currentEmpId = currentEmp.id;
 
     if (currentEmpId === otherEmployeeId) {
       throw new Error("Cannot start a direct message with yourself");
@@ -155,9 +213,10 @@ export class CommunicationService {
     recordId: string,
     title?: string
   ) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const orgId = user.employee.organizationId;
-    const empId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) throw new Error("Authenticated user has no employee profile");
+    const orgId = currentEmp.organizationId;
+    const empId = currentEmp.id;
 
     const cleanRecordType = recordType.toUpperCase();
 
@@ -224,9 +283,10 @@ export class CommunicationService {
       isPrivate?: boolean;
     }
   ) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const orgId = user.employee.organizationId;
-    const empId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) throw new Error("Authenticated user has no employee profile");
+    const orgId = currentEmp.organizationId;
+    const empId = currentEmp.id;
 
     const memberIds = Array.from(new Set([empId, ...(data.memberEmployeeIds || [])]));
 
@@ -274,9 +334,71 @@ export class CommunicationService {
     user: AuthenticatedUser,
     filters: { type?: string; recordType?: string; search?: string } = {}
   ) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const orgId = user.employee.organizationId;
-    const empId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) throw new Error("Authenticated user has no employee profile");
+    const orgId = currentEmp.organizationId;
+    const empId = currentEmp.id;
+
+    // Check if default company channels exist; if not, seed #general and #all-hands
+    const existingCount = await db.conversation.count({
+      where: { organizationId: orgId },
+    });
+
+    if (existingCount === 0) {
+      const defaultChannels = [
+        {
+          title: "#general",
+          description: "Company-wide discussion and team collaboration",
+          channelCode: "GENERAL",
+          isPrivate: false,
+          type: "CHANNEL",
+          welcome: `Welcome to #general! This channel is open to all team members for collaboration and updates.`,
+        },
+        {
+          title: "#announcements",
+          description: "Official circulars, company events, and general notices",
+          channelCode: "ANNOUNCEMENTS",
+          isPrivate: false,
+          type: "CHANNEL",
+          welcome: `Welcome to #announcements! Follow official corporate announcements and updates here.`,
+        },
+        {
+          title: "#all-hands",
+          description: "Cross-departmental open floor and general team questions",
+          channelCode: "ALL_HANDS",
+          isPrivate: false,
+          type: "CHANNEL",
+          welcome: `Welcome to #all-hands! Feel free to ask questions and share ideas across departments.`,
+        },
+      ];
+
+      for (const ch of defaultChannels) {
+        await db.conversation.create({
+          data: {
+            organizationId: orgId,
+            title: ch.title,
+            description: ch.description,
+            channelCode: ch.channelCode,
+            type: ch.type,
+            isPrivate: ch.isPrivate,
+            createdById: empId,
+            participants: {
+              create: [{ employeeId: empId, role: "OWNER" }],
+            },
+            messages: {
+              create: [
+                {
+                  senderId: empId,
+                  content: ch.welcome,
+                  priority: "NORMAL",
+                  isInternal: true,
+                },
+              ],
+            },
+          },
+        });
+      }
+    }
 
     const where: any = {
       organizationId: orgId,
@@ -374,9 +496,10 @@ export class CommunicationService {
    * Get single conversation with verification that user has permission
    */
   static async getConversationById(user: AuthenticatedUser, conversationId: string) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const orgId = user.employee.organizationId;
-    const empId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) throw new Error("Authenticated user has no employee profile");
+    const orgId = currentEmp.organizationId;
+    const empId = currentEmp.id;
 
     const conversation = await db.conversation.findFirst({
       where: { id: conversationId, organizationId: orgId },
@@ -400,6 +523,13 @@ export class CommunicationService {
       throw new Error("Access Denied: You are not an authorized participant of this private conversation");
     }
 
+    // Auto-join public channels
+    if (!isMember && !conversation.isPrivate) {
+      await db.conversationParticipant.create({
+        data: { conversationId, employeeId: empId, role: "MEMBER" },
+      });
+    }
+
     // Mark as read for this employee
     await db.conversationParticipant.updateMany({
       where: { conversationId, employeeId: empId },
@@ -419,8 +549,9 @@ export class CommunicationService {
     conversationId: string,
     filters: { limit?: number; before?: string; parentId?: string } = {}
   ) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const empId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) throw new Error("Authenticated user has no employee profile");
+    const empId = currentEmp.id;
 
     // Validate access
     await this.getConversationById(user, conversationId);
@@ -482,9 +613,9 @@ export class CommunicationService {
    * Send a new message or threaded reply in a conversation
    */
   static async sendMessage(user: AuthenticatedUser, conversationId: string, data: SendMessageInput) {
-    if (!user.employee) throw new Error("Authenticated user has no employee profile");
-    const orgId = user.employee.organizationId;
-    const senderEmp = user.employee;
+    const senderEmp = await this.resolveRealEmployee(user);
+    if (!senderEmp) throw new Error("Authenticated user has no employee profile");
+    const orgId = senderEmp.organizationId;
 
     // Validate access
     const conversation = await this.getConversationById(user, conversationId);
@@ -790,9 +921,10 @@ export class CommunicationService {
    * Get unread message count for global header badge with fast in-memory caching and batch query
    */
   static async getUnreadCount(user: AuthenticatedUser): Promise<number> {
-    if (!user.employee) return 0;
-    const orgId = user.employee.organizationId;
-    const empId = user.employee.id;
+    const currentEmp = await this.resolveRealEmployee(user);
+    if (!currentEmp) return 0;
+    const orgId = currentEmp.organizationId;
+    const empId = currentEmp.id;
 
     // Check fast in-memory cache
     const cached = unreadCountCache.get(empId);

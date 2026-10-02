@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   GitBranch,
   Landmark,
+  User,
 } from "lucide-react";
 import { useAuth } from "@/components/providers/auth-provider";
 
@@ -315,6 +316,7 @@ export function Sidebar() {
     groupName: "MY WORKSPACE",
     items: [
       { title: "Workspace Overview", href: "/app/overview", icon: LayoutDashboard },
+      { title: "My Profile", href: "/app/profile", icon: User },
       { title: "My Tasks", href: "/app/tasks", icon: CheckSquare },
       { title: "My Attendance", href: "/app/hr/attendance", icon: Clock },
       {
@@ -325,7 +327,6 @@ export function Sidebar() {
       { title: "My Salary & Payslips", href: "/app/payroll/my-payslips", icon: FileCheck },
       { title: "My Documents", href: "/app/documents", icon: FileText },
       { title: "Request Center", href: "/app/requests", icon: FileText },
-      { title: "AI Intelligence", href: "/app/ai", icon: Sparkles },
       { title: "Communications", href: "/app/communications", icon: MessageSquare },
       { title: "Calendar", href: "/app/calendar", icon: Calendar },
     ],

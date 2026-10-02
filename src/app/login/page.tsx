@@ -9,14 +9,7 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  CheckCircle2,
-  Sparkles,
-  Server,
-  Layers,
-  Activity,
-  Globe2,
   X,
-  UserCheck,
 } from "lucide-react";
 import { loginSchema } from "@/validations/auth.schema";
 
@@ -69,7 +62,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen w-full bg-[#070b16] text-slate-100 selection:bg-blue-600 selection:text-white">
+    <div className="relative flex h-screen w-full overflow-hidden bg-[#070b16] text-slate-100 selection:bg-blue-600 selection:text-white">
       {/* Background Decorative Ambient Glows */}
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -top-32 -left-32 h-96 w-96 rounded-full bg-blue-600/15 blur-[120px]" />
@@ -77,148 +70,96 @@ export default function LoginPage() {
         <div className="absolute -bottom-32 right-1/3 h-96 w-96 rounded-full bg-amber-500/10 blur-[140px]" />
       </div>
 
-      <div className="relative z-10 flex min-h-screen w-full flex-col lg:flex-row">
-        {/* ========================================================= */}
-        {/* LEFT COLUMN: Visual Showcase & Brand Intelligence Hub     */}
-        {/* Inspired by Nagad Back Office CRM Dribbble Design         */}
-        {/* ========================================================= */}
-        <div className="relative hidden w-full flex-col justify-between overflow-hidden border-r border-[#16233d] bg-gradient-to-br from-[#0c1322] via-[#080e1c] to-[#070b16] p-10 lg:flex lg:w-[50%] xl:w-[52%] 2xl:p-14">
-          {/* Subtle Grid Backdrop */}
+      <div className="relative z-10 flex h-screen w-full flex-col lg:flex-row">
+        {/* LEFT COLUMN: Portfolio Brand Image Showcase */}
+        <div
+          className="relative hidden w-full flex-col overflow-hidden border-r border-[#16233d] bg-gradient-to-br from-[#070b16] via-[#0a1020] to-[#0c1322] lg:flex lg:w-[50%] xl:w-[52%]"
+          style={{ height: "100vh" }}
+        >
+          {/* Subtle grid */}
           <div
-            className="absolute inset-0 opacity-[0.035] pointer-events-none"
+            className="absolute inset-0 opacity-[0.025] pointer-events-none"
             style={{
               backgroundImage: `linear-gradient(to right, #ffffff 1px, transparent 1px), linear-gradient(to bottom, #ffffff 1px, transparent 1px)`,
-              backgroundSize: "36px 36px",
+              backgroundSize: "40px 40px",
             }}
           />
+          {/* Ambient glows */}
+          <div className="absolute top-0 left-0 h-64 w-64 rounded-full bg-blue-700/10 blur-[100px] pointer-events-none" />
+          <div className="absolute bottom-0 right-0 h-64 w-64 rounded-full bg-amber-500/8 blur-[100px] pointer-events-none" />
 
-          {/* Top Brand */}
-          <div className="relative z-10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-white p-1 shadow-lg shadow-blue-600/25 border border-blue-400/40">
+          {/* ── Header ── */}
+          <div className="relative z-10 px-8 pt-7 pb-2 shrink-0">
+            <span className="inline-flex items-center rounded-md border border-[#d4af37]/30 bg-[#d4af37]/8 px-2.5 py-1 text-[10px] font-semibold tracking-widest text-[#d4af37] uppercase">
+              Our Portfolio
+            </span>
+            <h2 className="mt-2.5 text-[15px] font-bold leading-snug text-white">
+              Centralized Resource Management{" "}
+              <span className="bg-gradient-to-r from-blue-400 to-[#d4af37] bg-clip-text text-transparent">
+                For Naree Foundation
+              </span>{" "}
+              and Group Ventures
+            </h2>
+          </div>
+
+          {/* ── Image layout: 1 big top-center, 4 small in a row below ── */}
+          <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4 px-6 pb-6">
+
+            {/* Big square — NFVS Venture Studio */}
+            <div className="w-[180px] h-[180px] shrink-0 overflow-hidden rounded-2xl border border-[#2a3f5f] bg-white shadow-xl">
+              <img
+                src="/logos/nfvs-venture-studio-logo.jpg"
+                alt="Naree Foundation Venture Studio"
+                className="h-full w-full object-contain p-3"
+              />
+            </div>
+
+            {/* 4 small squares in a single row */}
+            <div className="flex flex-row gap-3">
+              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
                 <img
-                  src="/logos/nfvs-logo.jpg"
-                  alt="Naree Foundation Venture Studio"
-                  className="h-full w-full object-contain"
+                  src="/logos/naree-foundation-logo.jpg"
+                  alt="Naree Foundation"
+                  className="h-full w-full object-contain p-2.5"
                 />
               </div>
-              <div>
-                <span className="text-base font-bold tracking-tight text-white flex items-center gap-1.5">
-                  CRM + NFVS
-                  <span className="text-[#d4af37] text-xs font-semibold px-1.5 py-0.5 rounded bg-[#d4af37]/10 border border-[#d4af37]/25">
-                    ENTERPRISE
-                  </span>
-                </span>
-                <p className="text-[11px] font-medium text-slate-400">
-                  Unified Back-Office Management Cloud
-                </p>
+              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+                <img
+                  src="/logos/naree-care-service-logo.jpg"
+                  alt="Naree Care Service"
+                  className="h-full w-full object-contain p-2.5"
+                />
+              </div>
+              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+                <img
+                  src="/logos/quality-pest-control-logo.jpg"
+                  alt="Quality Pest Control & Allied Services"
+                  className="h-full w-full object-contain p-2.5"
+                />
+              </div>
+              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+                <img
+                  src="/logos/nirlesh-foods-logo.jpg"
+                  alt="Nirlesh Foods"
+                  className="h-full w-full object-contain p-2.5"
+                />
               </div>
             </div>
+
           </div>
 
-          {/* Center Showcase: Nagad CRM Hero Visual */}
-          <div className="relative z-10 my-auto py-10 space-y-8">
-            <div className="space-y-3 max-w-lg">
-              <div className="inline-flex items-center gap-2 rounded-lg border border-blue-500/30 bg-blue-500/10 px-3 py-1 text-xs font-medium text-blue-400">
-                <Sparkles className="h-3.5 w-3.5 text-[#d4af37]" />
-                <span>Next-Gen Back Office Architecture</span>
-              </div>
-              <h1 className="text-3xl font-extrabold tracking-tight text-white xl:text-4xl 2xl:text-5xl leading-tight">
-                Enterprise Precision. <br />
-                <span className="bg-gradient-to-r from-blue-400 via-indigo-300 to-[#d4af37] bg-clip-text text-transparent">
-                  Zero-Friction Control.
-                </span>
-              </h1>
-              <p className="text-sm leading-relaxed text-slate-400 max-w-md">
-                Manage clients, multi-tier procurement, real-time payroll, inventory movements,
-                and legal compliance in a single secured operational back-office.
-              </p>
-            </div>
 
-            {/* Glassmorphism Visual Feature Cards (Nagad Style) */}
-            <div className="space-y-3.5 max-w-md">
-              {/* Card 1: Operational Velocity */}
-              <div className="rounded-xl border border-[#1e3258]/80 bg-[#121c33]/70 p-4 shadow-xl backdrop-blur-md transition-all hover:border-blue-500/40 hover:bg-[#121c33]/90">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-600/20 text-blue-400 border border-blue-500/30">
-                      <Activity className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-slate-200">
-                        Operational Velocity & SLA
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        99.98% High-availability multi-zone clusters
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20">
-                    +28.4%
-                  </span>
-                </div>
-              </div>
-
-              {/* Card 2: Unified DB & RBAC Security */}
-              <div className="rounded-xl border border-[#1e3258]/80 bg-[#121c33]/70 p-4 shadow-xl backdrop-blur-md transition-all hover:border-blue-500/40 hover:bg-[#121c33]/90">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-[#d4af37]/15 text-[#d4af37] border border-[#d4af37]/30">
-                      <Shield className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-slate-200">
-                        Zero-Trust RBAC Governance
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        77 Core Data Models • ISO 27001 Certified
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-[#d4af37] bg-[#d4af37]/10 px-2 py-0.5 rounded border border-[#d4af37]/20">
-                    Active
-                  </span>
-                </div>
-              </div>
-
-              {/* Card 3: Modules Ecosystem */}
-              <div className="rounded-xl border border-[#1e3258]/80 bg-[#121c33]/70 p-4 shadow-xl backdrop-blur-md transition-all hover:border-blue-500/40 hover:bg-[#121c33]/90">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-indigo-600/20 text-indigo-400 border border-indigo-500/30">
-                      <Layers className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-semibold text-slate-200">
-                        Integrated Business Suite
-                      </div>
-                      <div className="text-[11px] text-slate-400">
-                        CRM • Finance • Inventory • Operations • Legal
-                      </div>
-                    </div>
-                  </div>
-                  <span className="text-xs font-mono font-bold text-blue-400 bg-blue-500/10 px-2 py-0.5 rounded border border-blue-500/20">
-                    Full Suite
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Security & Status Guarantee */}
-          <div className="relative z-10 flex items-center justify-between border-t border-[#16233d] pt-5 text-[11px] text-slate-400">
-            <div className="flex items-center gap-2">
-              <Lock className="h-3.5 w-3.5 text-blue-400" />
-              <span>TLS 1.3 End-to-End Encrypted Session</span>
-            </div>
-            <span className="font-mono text-slate-400">Build 2026.09.15</span>
+          {/* ── Bottom bar ── */}
+          <div className="relative z-10 flex items-center justify-between border-t border-[#16233d] px-8 py-3 text-[10px] text-slate-500 shrink-0">
+            <span>Powered by NFVS Enterprise CRM</span>
+            <span className="font-mono">Build 2026.09.15</span>
           </div>
         </div>
 
-        {/* ========================================================= */}
-        {/* RIGHT COLUMN: Back Office Login Form & Google SSO         */}
-        {/* ========================================================= */}
-        <div className="flex flex-1 flex-col justify-between p-6 sm:p-10 lg:p-12 xl:p-16">
+
+
+        {/* RIGHT COLUMN: Back Office Login Form */}
+        <div className="flex flex-1 flex-col justify-center overflow-y-auto p-6 sm:p-8 lg:p-10 xl:p-12" style={{ height: "100vh" }}>
           {/* Mobile Top Header */}
           <div className="flex items-center justify-between lg:hidden mb-8">
             <div className="flex items-center gap-2.5">
@@ -420,8 +361,8 @@ export default function LoginPage() {
 
             <div className="rounded-xl border border-[#1e3258] bg-[#121c33] p-3 text-xs space-y-1 font-mono">
               <div className="text-slate-400">Primary Administrator:</div>
-              <div className="text-blue-300">superadmin@nfvs.internal</div>
-              <div className="text-[11px] text-slate-500 pt-1">Default Seed: Enterprise@2026</div>
+              <div className="text-blue-300">superadmin@nfvs.in</div>
+              <div className="text-[11px] text-slate-500 pt-1">Universal Password: Admin@123</div>
             </div>
 
             <div className="flex justify-end pt-2">

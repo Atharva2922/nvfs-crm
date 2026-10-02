@@ -10,7 +10,7 @@ export async function GET(
 ) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
     }
 
@@ -34,8 +34,13 @@ export async function PATCH(
 ) {
   try {
     const user = await getCurrentUser();
-    if (!user || !user.employee) {
+    if (!user) {
       return errorResponse("Unauthorized", "UNAUTHORIZED", 401);
+    }
+
+    const emp = await CommunicationService.resolveRealEmployee(user);
+    if (!emp) {
+      return errorResponse("Employee record not found", "UNAUTHORIZED", 401);
     }
 
     const { id } = await params;
@@ -44,7 +49,7 @@ export async function PATCH(
     const conversation = await db.conversation.findFirst({
       where: {
         id,
-        organizationId: user.employee.organizationId,
+        organizationId: emp.organizationId,
       },
       include: {
         participants: true,
@@ -56,8 +61,8 @@ export async function PATCH(
     }
 
     // Check if user is participant or creator
-    const isParticipant = conversation.participants.some((p: any) => p.employeeId === user.employee!.id);
-    const isCreator = conversation.createdById === user.employee.id;
+    const isParticipant = conversation.participants.some((p: any) => p.employeeId === emp.id);
+    const isCreator = conversation.createdById === emp.id;
 
     if (!isParticipant && !isCreator && user.roleCode !== "SUPER_ADMIN") {
       return errorResponse("Access denied", "FORBIDDEN", 403);
