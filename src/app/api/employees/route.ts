@@ -45,7 +45,7 @@ export async function GET(req: NextRequest) {
     const status = searchParams.get("status") || undefined;
     const designation = searchParams.get("designation") || undefined;
     const page = Math.max(Number(searchParams.get("page") || 1), 1);
-    const limit = Math.min(Number(searchParams.get("limit") || 50), 200);
+    const limit = Math.min(Number(searchParams.get("limit") || 50), 1000);
     const skip = (page - 1) * limit;
 
     const where: any = {};

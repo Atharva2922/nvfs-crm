@@ -180,8 +180,8 @@ export default function EmployeeDirectoryPage() {
       setLoading(true);
       setError(null);
       const params = new URLSearchParams({
-        page: String(page),
-        limit: "200", // fetch all so we can split client-side
+        page: "1",
+        limit: "500", // Load all employees for company so client splits leadership & staff
         search,
         departmentId: selectedDept,
         status: selectedStatus,
@@ -210,7 +210,7 @@ export default function EmployeeDirectoryPage() {
     } finally {
       setLoading(false);
     }
-  }, [page, search, selectedDept, selectedStatus, currentUser?.activeCompany?.id]);
+  }, [search, selectedDept, selectedStatus, currentUser?.activeCompany?.id]);
 
   // Isolate strictly by active company
   const currentOrgId = currentUser?.activeCompany?.id;
@@ -225,8 +225,9 @@ export default function EmployeeDirectoryPage() {
   const staffList = scopedEmployees.filter(
     (e) => !LEADERSHIP_ROLE_CODES.has(e.user?.role?.code || "")
   );
-  const displayedStaff = staffList.slice((page - 1) * 10, page * 10);
   const staffTotalPages = Math.max(1, Math.ceil(staffList.length / 10));
+  const safePage = Math.min(Math.max(1, page), staffTotalPages);
+  const displayedStaff = staffList.slice((safePage - 1) * 10, safePage * 10);
 
   useEffect(() => {
     fetchEmployees();
@@ -653,7 +654,7 @@ export default function EmployeeDirectoryPage() {
               </Table>
 
               <Pagination
-                currentPage={page}
+                currentPage={safePage}
                 totalPages={staffTotalPages}
                 totalRecords={staffList.length}
                 pageSize={10}
