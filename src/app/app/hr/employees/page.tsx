@@ -16,6 +16,7 @@ import { Drawer } from "@/components/ui/drawer";
 import { LoadingState } from "@/components/ui/loading-state";
 import { ErrorState } from "@/components/ui/error-state";
 import { EmptyState } from "@/components/ui/empty-state";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   Users,
   UserPlus,
@@ -28,6 +29,7 @@ import {
   Crown,
   CheckCircle2,
   Landmark,
+  Trash2,
 } from "lucide-react";
 import { formatDate } from "@/lib/utils";
 import { HrNav } from "@/modules/hr/components/hr-nav";
@@ -123,6 +125,38 @@ export default function EmployeeDirectoryPage() {
   const [createLoading, setCreateLoading] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [isCustomDesignation, setIsCustomDesignation] = useState(false);
+
+  // Delete Employee state
+  const [deleteTarget, setDeleteTarget] = useState<EmployeeItem | null>(null);
+  const [deleteLoading, setDeleteLoading] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  const userRoleCode = (currentUser?.roleCode || "").toUpperCase();
+  const userRoleLevel = currentUser?.roleLevel ?? 10;
+  const isExecutive = LEADERSHIP_ROLE_CODES.has(userRoleCode) || userRoleLevel >= 40;
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    try {
+      setDeleteLoading(true);
+      setDeleteError(null);
+      const res = await fetch(`/api/employees/${deleteTarget.id}`, {
+        method: "DELETE",
+        headers: currentUser?.activeCompany?.id ? { "x-company-id": currentUser.activeCompany.id } : {},
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || "Failed to delete employee");
+      }
+      setDeleteTarget(null);
+      fetchEmployees();
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete employee");
+    } finally {
+      setDeleteLoading(false);
+    }
+  };
+
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -360,25 +394,48 @@ export default function EmployeeDirectoryPage() {
               const roleName = emp.user?.role?.name || emp.designation;
               const colorClass = getRoleColor(roleCode);
               return (
-                <Link
+                <div
                   key={emp.id}
-                  href={`/app/hr/employees/${emp.id}`}
-                  className="group flex items-center gap-3 rounded-xl border border-slate-700/60 bg-slate-900/60 p-3 hover:border-amber-500/40 hover:bg-amber-950/20 transition-all"
+                  className="group relative flex items-center justify-between gap-3 rounded-xl border border-slate-700/60 bg-slate-900/60 p-3 hover:border-amber-500/40 hover:bg-amber-950/20 transition-all"
                 >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-700/10 border border-amber-500/20 text-sm font-bold text-amber-300">
-                    {emp.firstName[0]}{emp.lastName[0]}
+                  <Link
+                    href={`/app/hr/employees/${emp.id}`}
+                    className="flex items-center gap-3 min-w-0 flex-1"
+                  >
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500/20 to-amber-700/10 border border-amber-500/20 text-sm font-bold text-amber-300">
+                      {emp.firstName[0]}{emp.lastName[0]}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-xs font-semibold text-slate-100 group-hover:text-amber-300 transition-colors truncate">
+                        {emp.firstName} {emp.lastName}
+                      </p>
+                      <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider mt-0.5 ${colorClass}`}>
+                        {roleCode || "EXEC"}
+                      </span>
+                      <p className="text-[10px] text-slate-500 truncate mt-0.5">{emp.department?.name || "Executive Office"}</p>
+                    </div>
+                  </Link>
+                  <div className="flex items-center gap-1.5">
+                    {isExecutive && emp.id !== currentUser?.employee?.id && emp.user?.id !== currentUser?.id && roleCode !== "SUPER_ADMIN" && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setDeleteTarget(emp);
+                        }}
+                        className="p-1.5 rounded-lg text-slate-500 hover:text-rose-400 hover:bg-rose-500/10 border border-transparent hover:border-rose-500/30 transition-colors"
+                        title="Delete Executive Record"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </button>
+                    )}
+                    <Link
+                      href={`/app/hr/employees/${emp.id}`}
+                      className="p-1.5 rounded-lg text-slate-500 hover:text-amber-400 transition-colors"
+                    >
+                      <ExternalLink className="h-3.5 w-3.5" />
+                    </Link>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-slate-100 group-hover:text-amber-300 transition-colors truncate">
-                      {emp.firstName} {emp.lastName}
-                    </p>
-                    <span className={`inline-flex items-center rounded-full border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider mt-0.5 ${colorClass}`}>
-                      {roleCode || "EXEC"}
-                    </span>
-                    <p className="text-[10px] text-slate-500 truncate mt-0.5">{emp.department?.name || "Executive Office"}</p>
-                  </div>
-                  <ExternalLink className="h-3 w-3 text-slate-600 group-hover:text-amber-400 shrink-0" />
-                </Link>
+                </div>
               );
             })}
           </div>
@@ -566,14 +623,29 @@ export default function EmployeeDirectoryPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right">
-                        <Link
-                          href={`/app/hr/employees/${emp.id}`}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 border border-blue-500/20 hover:border-blue-500/40 transition-colors whitespace-nowrap"
-                          title="Complete Profile & View Dossier"
-                        >
-                          <span>{emp.employmentStatus === "ACTIVE" ? "Dossier" : "Complete Profile"}</span>
-                          <ExternalLink className="h-3 w-3" />
-                        </Link>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Link
+                            href={`/app/hr/employees/${emp.id}`}
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium bg-blue-600/10 text-blue-400 hover:bg-blue-600/20 border border-blue-500/20 hover:border-blue-500/40 transition-colors whitespace-nowrap"
+                            title="Complete Profile & View Dossier"
+                          >
+                            <span>{emp.employmentStatus === "ACTIVE" ? "Dossier" : "Complete Profile"}</span>
+                            <ExternalLink className="h-3 w-3" />
+                          </Link>
+                          {isExecutive && emp.id !== currentUser?.employee?.id && emp.user?.id !== currentUser?.id && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setDeleteTarget(emp);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs font-medium bg-rose-500/10 text-rose-400 hover:bg-rose-500/20 border border-rose-500/20 hover:border-rose-500/40 transition-colors whitespace-nowrap"
+                              title="Delete Employee Record"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              <span className="hidden sm:inline">Delete</span>
+                            </button>
+                          )}
+                        </div>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -858,6 +930,26 @@ export default function EmployeeDirectoryPage() {
           />
         </form>
       </Drawer>
+
+      <ConfirmationDialog
+        isOpen={!!deleteTarget}
+        onClose={() => {
+          if (!deleteLoading) {
+            setDeleteTarget(null);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleConfirmDelete}
+        title="Confirm Employee Deletion"
+        message={
+          deleteError
+            ? `Error: ${deleteError}`
+            : `Are you sure you want to permanently delete ${deleteTarget?.firstName} ${deleteTarget?.lastName} (${deleteTarget?.employeeNumber})? All associated credentials, operational records, and HR profile records will be permanently removed.`
+        }
+        confirmLabel={deleteLoading ? "Deleting..." : "Delete Employee"}
+        variant="danger"
+        isLoading={deleteLoading}
+      />
     </div>
   );
 }

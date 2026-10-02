@@ -2,12 +2,14 @@
 
 import React, { useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { ConfirmationDialog } from "@/components/ui/confirmation-dialog";
 import {
   ArrowLeft,
   User,
@@ -170,8 +172,38 @@ export function EmployeeProfileDossier({
   const [approvalNotes, setApprovalNotes] = useState("Profile dossier and identity verified. Approved into active workforce.");
   const [approvalCompleted, setApprovalCompleted] = useState(false);
 
-  // Check if current user is HR or Admin
-  const isHrOrAdmin = ["SUPER_ADMIN", "ADMIN", "CEO", "HR"].includes(currentUser?.roleCode);
+  // Check if current user is HR, Admin, or Corporate Executive
+  const userRoleCode = (currentUser?.roleCode || currentUser?.role?.code || "").toUpperCase();
+  const userRoleLevel = currentUser?.roleLevel ?? currentUser?.role?.level ?? 10;
+  const isHrOrAdmin = ["SUPER_ADMIN", "ADMIN", "CEO", "HR"].includes(userRoleCode);
+  const isExecutive = ["SUPER_ADMIN", "ADMIN", "CHAIRPERSON", "CEO", "COO", "CFO", "CIO", "CTO", "CMO", "CHRO", "HR", "DIRECTOR", "VP", "PRESIDENT"].includes(userRoleCode) || userRoleLevel >= 40;
+
+  // Delete state
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const router = useRouter();
+
+  const handleDeleteEmployee = async () => {
+    try {
+      setDeleting(true);
+      setDeleteError(null);
+      const res = await fetch(`/api/employees/${employee.id}`, {
+        method: "DELETE",
+        headers: currentUser?.activeCompany?.id ? { "x-company-id": currentUser.activeCompany.id } : {},
+      });
+      const json = await res.json();
+      if (!res.ok || !json.success) {
+        throw new Error(json.error?.message || "Failed to delete employee");
+      }
+      setDeleteConfirmOpen(false);
+      router.push("/app/hr/employees");
+    } catch (err: any) {
+      setDeleteError(err.message || "Failed to delete employee");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const handleInputChange = (field: string, value: any) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -416,6 +448,17 @@ export function EmployeeProfileDossier({
           <span>Back to Employee Directory</span>
         </Link>
         <div className="flex items-center gap-2">
+          {isExecutive && employee.id !== currentUser?.employee?.id && employee.user?.id !== currentUser?.id && employee.user?.role?.code !== "SUPER_ADMIN" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setDeleteConfirmOpen(true)}
+              className="border-rose-500/30 bg-rose-500/10 text-xs text-rose-400 hover:text-white hover:bg-rose-600/30 hover:border-rose-500/60 transition-colors"
+            >
+              <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+              Delete Employee
+            </Button>
+          )}
           {isHrOrAdmin && !isProfileActive && (
             <Button
               variant="outline"
@@ -1766,6 +1809,26 @@ export function EmployeeProfileDossier({
           </div>
         </div>
       )}
+
+      <ConfirmationDialog
+        isOpen={deleteConfirmOpen}
+        onClose={() => {
+          if (!deleting) {
+            setDeleteConfirmOpen(false);
+            setDeleteError(null);
+          }
+        }}
+        onConfirm={handleDeleteEmployee}
+        title="Confirm Employee Deletion"
+        message={
+          deleteError
+            ? `Error: ${deleteError}`
+            : `Are you sure you want to permanently delete ${employee.firstName} ${employee.lastName} (${employee.employeeNumber})? All associated credentials, operational records, and HR profile records will be permanently removed.`
+        }
+        confirmLabel={deleting ? "Deleting..." : "Delete Employee"}
+        variant="danger"
+        isLoading={deleting}
+      />
     </div>
   );
 }
