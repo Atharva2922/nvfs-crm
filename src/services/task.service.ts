@@ -120,6 +120,11 @@ export class TaskService {
     // Assigning to self is always permitted
     if (assigneeEmp.id === creatorId) return;
 
+    // Standard employees without manager/executive privileges cannot assign tasks to other staff
+    if (!this.isManager(creator)) {
+      throw new Error("Forbidden: Standard employees can only create and manage tasks assigned to themselves.");
+    }
+
     const assigneeRole = assigneeEmp.user?.role?.code || "";
     const assigneeDept = assigneeEmp.department?.code || "";
 
@@ -215,6 +220,9 @@ export class TaskService {
     const isSuperAdmin = user.roleCode === "SUPER_ADMIN";
     const isExec = this.isExecutive(user);
     const isDeptHead = user.roleCode === "DEPARTMENT_HEAD";
+    const isManagerRole =
+      (user.roleCode === "MANAGER" || (user.roleLevel ?? 0) >= 30) &&
+      user.roleCode !== "EMPLOYEE";
 
     const where: any = {};
     if (orgId && !isSuperAdmin) {
@@ -224,37 +232,64 @@ export class TaskService {
       where.departmentId = filters.departmentId;
     }
 
-    // Scope-based filtering
+    // Scope-based filtering with strict data isolation:
+    // Standard employees (roleCode EMPLOYEE or non-manager) MUST ONLY EVER see their own tasks
     const effectiveScope = filters.quickFilter === "my" ? "my" : filters.scope;
-    if (isSuperAdmin) {
-      // Super Admin has global read visibility - no restrictive where.OR applied
-    } else if (empId && (effectiveScope === "my" || (!isExec && !isDeptHead && effectiveScope !== "all"))) {
-      where.OR = [{ assigneeId: empId }, { creatorId: empId }];
+
+    if (!isSuperAdmin && !isExec && !isDeptHead && !isManagerRole) {
+      // Standard employee: strict personal data isolation
+      where.AND = [
+        ...(where.AND || []),
+        { OR: [{ assigneeId: empId }, { creatorId: empId }] },
+      ];
+    } else if (effectiveScope === "my") {
+      where.AND = [
+        ...(where.AND || []),
+        { OR: [{ assigneeId: empId }, { creatorId: empId }] },
+      ];
     } else if (empId && isDeptHead && effectiveScope === "department") {
-      where.OR = [
-        { departmentId: user.employee?.departmentId || undefined },
-        { assigneeId: empId },
-        { creatorId: empId },
-        { assignee: { managerId: empId } },
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { departmentId: user.employee?.departmentId || undefined },
+            { assigneeId: empId },
+            { creatorId: empId },
+            { assignee: { managerId: empId } },
+          ],
+        },
       ];
-    } else if (empId && !isExec && effectiveScope === "all") {
-      where.OR = [
-        { assigneeId: empId },
-        { creatorId: empId },
-        { assignee: { managerId: empId } },
+    } else if (empId && isManagerRole && (effectiveScope === "department" || effectiveScope === "all")) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { assigneeId: empId },
+            { creatorId: empId },
+            { assignee: { managerId: empId } },
+          ],
+        },
       ];
-    } else if (!isExec && effectiveScope === "all") {
-      where.OR = [
-        { assigneeId: empId },
-        { creatorId: empId },
-        { assignee: { managerId: empId } },
+    } else if (isExec || isSuperAdmin) {
+      // Global read for executives
+    } else {
+      where.AND = [
+        ...(where.AND || []),
+        { OR: [{ assigneeId: empId }, { creatorId: empId }] },
       ];
     }
 
     if (filters.status && filters.status !== "ALL") where.status = filters.status;
     if (filters.priority && filters.priority !== "ALL") where.priority = filters.priority;
     if (filters.departmentId && filters.departmentId !== "ALL") where.departmentId = filters.departmentId;
-    if (filters.assigneeId && filters.assigneeId !== "ALL") where.assigneeId = filters.assigneeId;
+
+    if (filters.assigneeId && filters.assigneeId !== "ALL") {
+      if (!isSuperAdmin && !isExec && !isDeptHead && !isManagerRole && filters.assigneeId !== empId) {
+        where.assigneeId = empId;
+      } else {
+        where.assigneeId = filters.assigneeId;
+      }
+    }
     if (filters.creatorId && filters.creatorId !== "ALL") where.creatorId = filters.creatorId;
     if (filters.operationId) where.operationId = filters.operationId;
     if (filters.relatedClientId && filters.relatedClientId !== "ALL") where.relatedClientId = filters.relatedClientId;
@@ -411,6 +446,7 @@ export class TaskService {
             email: true,
             avatarUrl: true,
             userId: true,
+            managerId: true,
           },
         },
         department: {
@@ -447,8 +483,15 @@ export class TaskService {
     if (!this.isExecutive(user)) {
       const isAssignee = task.assigneeId === user.employee.id;
       const isCreator = task.creatorId === user.employee.id;
-      const isManager = task.assignee?.userId === user.id; // or subordinate
-      if (!isAssignee && !isCreator && !isManager && user.roleCode !== "DEPARTMENT_HEAD") {
+      const isManager =
+        (user.roleCode === "MANAGER" || (user.roleLevel ?? 0) >= 30) &&
+        user.roleCode !== "EMPLOYEE" &&
+        task.assignee?.managerId === user.employee.id;
+      const isDeptHead =
+        user.roleCode === "DEPARTMENT_HEAD" &&
+        task.departmentId === user.employee.departmentId;
+
+      if (!isAssignee && !isCreator && !isManager && !isDeptHead) {
         throw new Error("Access Denied: You do not have permission to view this task");
       }
     }

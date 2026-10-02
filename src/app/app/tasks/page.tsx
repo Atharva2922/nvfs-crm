@@ -152,7 +152,8 @@ interface ClientOption {
 }
 
 export default function TasksPage() {
-  const { user, isSuperAdmin, activeCompany } = useAuth();
+  const { user, isSuperAdmin, isExecutive, isDeptHead, isManager, activeCompany } = useAuth();
+  const isLeaderOrExec = Boolean(isSuperAdmin || isExecutive || isDeptHead || isManager);
   const activeCompanyId =
     activeCompany?.id || user?.activeCompany?.id || user?.employee?.organizationId;
   const router = useRouter();
@@ -165,11 +166,9 @@ export default function TasksPage() {
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"kanban" | "list">("kanban");
 
-  // Filters
-  const [scope, setScope] = useState<"all" | "my" | "department">(
-    (searchParams.get("scope") as "all" | "my" | "department") || "all"
-  );
-  const [quickFilter, setQuickFilter] = useState<string>(searchParams.get("quickFilter") || "all");
+  // Filters - Non-leadership employees strictly locked to their own tasks
+  const [scope, setScope] = useState<"all" | "my" | "department">("my");
+  const [quickFilter, setQuickFilter] = useState<string>("my");
   const [statusFilter, setStatusFilter] = useState<string>(searchParams.get("status") || "ALL");
   const [priorityFilter, setPriorityFilter] = useState<string>(searchParams.get("priority") || "ALL");
   const [assigneeFilter, setAssigneeFilter] = useState<string>(searchParams.get("assigneeId") || "ALL");
@@ -202,6 +201,29 @@ export default function TasksPage() {
   const [formError, setFormError] = useState("");
   const [isCreating, setIsCreating] = useState(false);
 
+  // Align scope & quick filter once user permissions are loaded
+  useEffect(() => {
+    if (!user) return;
+    if (!isLeaderOrExec) {
+      if (scope !== "my") setScope("my");
+      if (quickFilter === "all") setQuickFilter("my");
+      if (assigneeFilter !== "ALL") setAssigneeFilter("ALL");
+    } else {
+      const urlScope = searchParams.get("scope") as "all" | "my" | "department";
+      if (urlScope && urlScope !== scope) {
+        setScope(urlScope);
+      } else if (!urlScope && scope === "my") {
+        setScope("all");
+      }
+      const urlQuick = searchParams.get("quickFilter");
+      if (urlQuick && urlQuick !== quickFilter) {
+        setQuickFilter(urlQuick);
+      } else if (!urlQuick && quickFilter === "my") {
+        setQuickFilter("all");
+      }
+    }
+  }, [user, isLeaderOrExec]);
+
   // Debounce search
   useEffect(() => {
     const handler = setTimeout(() => {
@@ -214,11 +236,13 @@ export default function TasksPage() {
   // Sync URL params
   useEffect(() => {
     const params = new URLSearchParams();
-    if (scope !== "all") params.set("scope", scope);
-    if (quickFilter !== "all") params.set("quickFilter", quickFilter);
+    const effectiveScope = !isLeaderOrExec ? "my" : scope;
+    if (isLeaderOrExec && effectiveScope !== "all") params.set("scope", effectiveScope);
+    const effectiveQuick = !isLeaderOrExec && quickFilter === "all" ? "my" : quickFilter;
+    if (effectiveQuick !== "all") params.set("quickFilter", effectiveQuick);
     if (statusFilter !== "ALL") params.set("status", statusFilter);
     if (priorityFilter !== "ALL") params.set("priority", priorityFilter);
-    if (assigneeFilter !== "ALL") params.set("assigneeId", assigneeFilter);
+    if (isLeaderOrExec && assigneeFilter !== "ALL") params.set("assigneeId", assigneeFilter);
     if (clientFilter !== "ALL") params.set("relatedClientId", clientFilter);
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (sortBy !== "createdAt") params.set("sortBy", sortBy);
@@ -227,17 +251,19 @@ export default function TasksPage() {
 
     const newUrl = `${pathname}${params.toString() ? `?${params.toString()}` : ""}`;
     window.history.replaceState(null, "", newUrl);
-  }, [scope, quickFilter, statusFilter, priorityFilter, assigneeFilter, clientFilter, debouncedSearch, sortBy, sortOrder, page, pathname]);
+  }, [scope, quickFilter, statusFilter, priorityFilter, assigneeFilter, clientFilter, debouncedSearch, sortBy, sortOrder, page, pathname, isLeaderOrExec]);
 
   const fetchTasks = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      if (scope) params.set("scope", scope);
-      if (quickFilter && quickFilter !== "all") params.set("quickFilter", quickFilter);
+      const effectiveScope = !isLeaderOrExec ? "my" : scope;
+      if (effectiveScope) params.set("scope", effectiveScope);
+      const effectiveQuick = !isLeaderOrExec && quickFilter === "all" ? "my" : quickFilter;
+      if (effectiveQuick && effectiveQuick !== "all") params.set("quickFilter", effectiveQuick);
       if (statusFilter !== "ALL") params.set("status", statusFilter);
       if (priorityFilter !== "ALL") params.set("priority", priorityFilter);
-      if (assigneeFilter !== "ALL") params.set("assigneeId", assigneeFilter);
+      if (isLeaderOrExec && assigneeFilter !== "ALL") params.set("assigneeId", assigneeFilter);
       if (clientFilter !== "ALL") params.set("relatedClientId", clientFilter);
       if (debouncedSearch) params.set("search", debouncedSearch);
 
@@ -380,8 +406,8 @@ export default function TasksPage() {
   };
 
   const handleClearFilters = () => {
-    setScope("all");
-    setQuickFilter("all");
+    setScope(isLeaderOrExec ? "all" : "my");
+    setQuickFilter(isLeaderOrExec ? "all" : "my");
     setStatusFilter("ALL");
     setPriorityFilter("ALL");
     setAssigneeFilter("ALL");
@@ -394,11 +420,12 @@ export default function TasksPage() {
   };
 
   const hasActiveFilters = Boolean(
-    scope !== "all" ||
-    quickFilter !== "all" ||
+    (isLeaderOrExec && scope !== "all") ||
+    (isLeaderOrExec && quickFilter !== "all") ||
+    (!isLeaderOrExec && quickFilter !== "my") ||
     statusFilter !== "ALL" ||
     priorityFilter !== "ALL" ||
-    assigneeFilter !== "ALL" ||
+    (isLeaderOrExec && assigneeFilter !== "ALL") ||
     clientFilter !== "ALL" ||
     debouncedSearch
   );
@@ -443,6 +470,7 @@ export default function TasksPage() {
 
     try {
       setIsCreating(true);
+      const effectiveAssigneeId = !isLeaderOrExec ? user?.employee?.id : (newTaskAssigneeId || undefined);
       const res = await fetch("/api/tasks", {
         method: "POST",
         headers: {
@@ -453,7 +481,7 @@ export default function TasksPage() {
           title: newTaskTitle,
           description: newTaskDesc || undefined,
           priority: newTaskPriority,
-          assigneeId: newTaskAssigneeId || undefined,
+          assigneeId: effectiveAssigneeId,
           dueDate: newTaskDueDate || undefined,
           relatedProjectId: newTaskProject || undefined,
           relatedClientId: newTaskClient || undefined,
@@ -552,8 +580,12 @@ export default function TasksPage() {
       {/* Page Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
         <PageHeader
-          title="Company Tasks & Activity"
-          description="Hierarchical task delegation, departmental deliverables, status lifecycle, and collaboration threads."
+          title={isLeaderOrExec ? "Company Tasks & Activity" : "My Tasks & Activity"}
+          description={
+            isLeaderOrExec
+              ? "Hierarchical task delegation, departmental deliverables, status lifecycle, and collaboration threads."
+              : "Personal task tracker, assigned deliverables, status lifecycle, and collaboration updates."
+          }
         />
         <div className="flex items-center gap-2">
           <div className="flex items-center rounded-lg border border-slate-800 bg-[#0f172a] p-1">
@@ -593,14 +625,23 @@ export default function TasksPage() {
         {/* Quick Filter Tabs */}
         <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
           <div className="flex flex-wrap items-center gap-1.5">
-            {[
-              { id: "all", label: "All Tasks" },
-              { id: "my", label: "My Tasks" },
-              { id: "today", label: "Today" },
-              { id: "upcoming", label: "Upcoming" },
-              { id: "overdue", label: "Overdue" },
-              { id: "completed", label: "Completed" },
-            ].map((tab) => (
+            {(isLeaderOrExec
+              ? [
+                  { id: "all", label: "All Tasks" },
+                  { id: "my", label: "My Tasks" },
+                  { id: "today", label: "Today" },
+                  { id: "upcoming", label: "Upcoming" },
+                  { id: "overdue", label: "Overdue" },
+                  { id: "completed", label: "Completed" },
+                ]
+              : [
+                  { id: "my", label: "My Tasks" },
+                  { id: "today", label: "Today" },
+                  { id: "upcoming", label: "Upcoming" },
+                  { id: "overdue", label: "Overdue" },
+                  { id: "completed", label: "Completed" },
+                ]
+            ).map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => {
@@ -622,18 +663,24 @@ export default function TasksPage() {
           {/* Scope Dropdown */}
           <div className="flex items-center gap-1.5">
             <span className="text-[11px] font-medium text-slate-500 uppercase tracking-wider">Scope:</span>
-            <select
-              value={scope}
-              onChange={(e) => {
-                setScope(e.target.value as "all" | "my" | "department");
-                setPage(1);
-              }}
-              className="h-7 rounded border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
-            >
-              <option value="all">Entire Organization</option>
-              <option value="my">My Assigned</option>
-              <option value="department">My Department</option>
-            </select>
+            {isLeaderOrExec ? (
+              <select
+                value={scope}
+                onChange={(e) => {
+                  setScope(e.target.value as "all" | "my" | "department");
+                  setPage(1);
+                }}
+                className="h-7 rounded border border-slate-800 bg-slate-900 px-2 text-xs text-slate-300 focus:border-blue-500 focus:outline-none"
+              >
+                <option value="all">Entire Organization</option>
+                <option value="my">My Assigned</option>
+                <option value="department">My Department</option>
+              </select>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 border border-blue-500/20 px-2.5 py-0.5 text-xs text-blue-400 font-medium">
+                My Assigned Tasks
+              </span>
+            )}
           </div>
         </div>
 
@@ -651,22 +698,24 @@ export default function TasksPage() {
             />
           </div>
 
-          {/* Assignee Filter — Staff Employees Only */}
-          <select
-            value={assigneeFilter}
-            onChange={(e) => {
-              setAssigneeFilter(e.target.value);
-              setPage(1);
-            }}
-            className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[200px]"
-          >
-            <option value="ALL">All Assignees</option>
-            {staffEmployees.map((emp) => (
-              <option key={emp.id} value={emp.id}>
-                {emp.isFree ? "🟢" : "🟡"} {emp.firstName} {emp.lastName} ({emp.designation})
-              </option>
-            ))}
-          </select>
+          {/* Assignee Filter — Leadership & Management Only */}
+          {isLeaderOrExec && (
+            <select
+              value={assigneeFilter}
+              onChange={(e) => {
+                setAssigneeFilter(e.target.value);
+                setPage(1);
+              }}
+              className="h-8 rounded-md border border-slate-800 bg-slate-900 px-2.5 text-xs text-slate-300 focus:border-blue-500 focus:outline-none max-w-[200px]"
+            >
+              <option value="ALL">All Assignees</option>
+              {staffEmployees.map((emp) => (
+                <option key={emp.id} value={emp.id}>
+                  {emp.isFree ? "🟢" : "🟡"} {emp.firstName} {emp.lastName} ({emp.designation})
+                </option>
+              ))}
+            </select>
+          )}
 
           {/* Related Client Filter */}
           <select
@@ -1253,163 +1302,179 @@ export default function TasksPage() {
                 <div>
                   <label className="block font-medium text-slate-300 mb-1">Assign To</label>
 
-                  {/* Custom Assignee Dropdown */}
-                  <div ref={assigneeDropdownRef} className="relative">
-                    {/* Trigger button */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAssigneeDropdownOpen((v) => !v);
-                        setAssigneeSearch("");
-                      }}
-                      className={cn(
-                        "w-full flex items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-all",
-                        assigneeDropdownOpen
-                          ? "border-blue-500 bg-slate-900 ring-1 ring-blue-500/30"
-                          : "border-slate-700 bg-slate-900 hover:border-slate-600"
-                      )}
-                    >
-                      {selectedAssignee ? (
-                        <>
-                          <span className="text-sm">
-                            {selectedAssignee.isFree ? "🟢" : "🟡"}
-                          </span>
-                          <div className="flex-1 text-left min-w-0">
-                            <span className="font-semibold text-slate-100 truncate block">
-                              {selectedAssignee.firstName} {selectedAssignee.lastName}
-                            </span>
-                            <span className="text-slate-400 text-[10px] truncate block">
-                              {selectedAssignee.designation}{selectedAssignee.department ? ` · ${selectedAssignee.department.name}` : ""}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={(ev) => { ev.stopPropagation(); setNewTaskAssigneeId(""); }}
-                            className="shrink-0 rounded p-0.5 text-slate-500 hover:bg-slate-800 hover:text-rose-400 transition-colors"
-                          >
-                            <X className="h-3.5 w-3.5" />
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <UserCheck className="h-3.5 w-3.5 text-slate-500" />
-                          <span className="flex-1 text-left text-slate-500">Select employee...</span>
-                          <ChevronDown className={cn("h-3.5 w-3.5 text-slate-500 transition-transform", assigneeDropdownOpen && "rotate-180")} />
-                        </>
-                      )}
-                    </button>
-
-                    {/* Dropdown panel */}
-                    {assigneeDropdownOpen && (
-                      <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-xl border border-slate-700 bg-[#0c1225] shadow-2xl shadow-black/60 overflow-hidden animate-in fade-in zoom-in-95">
-                        {/* Search bar */}
-                        <div className="p-2 border-b border-slate-800">
-                          <div className="relative">
-                            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
-                            <input
-                              autoFocus
-                              type="text"
-                              placeholder="Search employee name, designation, department..."
-                              value={assigneeSearch}
-                              onChange={(e) => setAssigneeSearch(e.target.value)}
-                              className="w-full rounded-md border border-slate-700 bg-slate-900 pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Option list */}
-                        <div className="max-h-56 overflow-y-auto py-1">
-                          {/* Unassigned option */}
-                          <button
-                            type="button"
-                            onClick={() => { setNewTaskAssigneeId(""); setAssigneeDropdownOpen(false); }}
-                            className={cn(
-                              "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
-                              !newTaskAssigneeId
-                                ? "bg-blue-600/20 text-blue-300"
-                                : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
-                            )}
-                          >
-                            <span className="text-slate-500">—</span>
-                            <span>Unassigned</span>
-                          </button>
-
-                          {/* Staff Employees Group — strictly staff employees only */}
-                          {filteredStaff.length > 0 ? (
+                  {isLeaderOrExec ? (
+                    <>
+                      {/* Custom Assignee Dropdown */}
+                      <div ref={assigneeDropdownRef} className="relative">
+                        {/* Trigger button */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAssigneeDropdownOpen((v) => !v);
+                            setAssigneeSearch("");
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 rounded-lg border px-3 py-2 text-xs transition-all",
+                            assigneeDropdownOpen
+                              ? "border-blue-500 bg-slate-900 ring-1 ring-blue-500/30"
+                              : "border-slate-700 bg-slate-900 hover:border-slate-600"
+                          )}
+                        >
+                          {selectedAssignee ? (
                             <>
-                              <div className="flex items-center gap-1.5 px-3 py-1.5 mt-1 border-t border-slate-800/60">
-                                <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
-                                  👷 Assignable Staff Employees
+                              <span className="text-sm">
+                                {selectedAssignee.isFree ? "🟢" : "🟡"}
+                              </span>
+                              <div className="flex-1 text-left min-w-0">
+                                <span className="font-semibold text-slate-100 truncate block">
+                                  {selectedAssignee.firstName} {selectedAssignee.lastName}
                                 </span>
-                                <span className="ml-auto rounded-full bg-slate-800 px-1.5 py-0.5 text-[9px] font-mono text-slate-400">
-                                  {filteredStaff.length}
+                                <span className="text-slate-400 text-[10px] truncate block">
+                                  {selectedAssignee.designation}{selectedAssignee.department ? ` · ${selectedAssignee.department.name}` : ""}
                                 </span>
                               </div>
-                              {filteredStaff.map((emp) => (
-                                <button
-                                  key={emp.id}
-                                  type="button"
-                                  onClick={() => {
-                                    setNewTaskAssigneeId(emp.id);
-                                    setAssigneeDropdownOpen(false);
-                                    setAssigneeSearch("");
-                                  }}
-                                  className={cn(
-                                    "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors group",
-                                    newTaskAssigneeId === emp.id
-                                      ? "bg-blue-600/20 text-blue-300"
-                                      : "text-slate-300 hover:bg-slate-800/70 hover:text-slate-100"
-                                  )}
-                                >
-                                  <span className="text-sm shrink-0">{emp.isFree ? "🟢" : "🟡"}</span>
-                                  <div className="flex-1 text-left min-w-0">
-                                    <p className="font-medium truncate">{emp.firstName} {emp.lastName}</p>
-                                    <p className="text-[10px] text-slate-500 group-hover:text-slate-400 truncate">
-                                      {emp.designation}{emp.department ? ` · ${emp.department.name}` : ""}
-                                    </p>
-                                  </div>
-                                  {emp.isFree ? (
-                                    <span className="shrink-0 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400">
-                                      Free
-                                    </span>
-                                  ) : (
-                                    <span className="shrink-0 rounded-full bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
-                                      Busy
-                                    </span>
-                                  )}
-                                </button>
-                              ))}
+                              <button
+                                type="button"
+                                onClick={(ev) => { ev.stopPropagation(); setNewTaskAssigneeId(""); }}
+                                className="shrink-0 rounded p-0.5 text-slate-500 hover:bg-slate-800 hover:text-rose-400 transition-colors"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                              </button>
                             </>
                           ) : (
-                            <div className="px-3 py-6 text-center text-xs text-slate-500">
-                              {assigneeSearch.trim()
-                                ? `No staff employees match "${assigneeSearch}"`
-                                : "No staff employees available"}
-                            </div>
+                            <>
+                              <UserCheck className="h-3.5 w-3.5 text-slate-500" />
+                              <span className="flex-1 text-left text-slate-500">Select employee...</span>
+                              <ChevronDown className={cn("h-3.5 w-3.5 text-slate-500 transition-transform", assigneeDropdownOpen && "rotate-180")} />
+                            </>
                           )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
+                        </button>
 
-                  {/* Selected preview card (shown below trigger when closed) */}
-                  {selectedAssignee && !assigneeDropdownOpen && (
-                    <div className={cn(
-                      "mt-2 rounded-lg px-3 py-2.5 flex items-center gap-3 text-xs border",
-                      selectedAssignee.isFree
-                        ? "bg-emerald-950/50 border-emerald-700/30 text-emerald-300"
-                        : "bg-amber-950/50 border-amber-700/30 text-amber-300"
-                    )}>
-                      <span className="text-base">
-                        {selectedAssignee.isFree ? "🟢" : "🟡"}
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-semibold truncate">{selectedAssignee.firstName} {selectedAssignee.lastName}</p>
-                        <p className="opacity-70 truncate text-[10px]">
-                          {selectedAssignee.isFree
-                            ? `Free · ${selectedAssignee.designation}`
-                            : `Busy · ${selectedAssignee.busyReason || "has active workload"}`}
-                        </p>
+                        {/* Dropdown panel */}
+                        {assigneeDropdownOpen && (
+                          <div className="absolute left-0 right-0 top-full z-50 mt-1.5 rounded-xl border border-slate-700 bg-[#0c1225] shadow-2xl shadow-black/60 overflow-hidden animate-in fade-in zoom-in-95">
+                            {/* Search bar */}
+                            <div className="p-2 border-b border-slate-800">
+                              <div className="relative">
+                                <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-slate-500" />
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  placeholder="Search employee name, designation, department..."
+                                  value={assigneeSearch}
+                                  onChange={(e) => setAssigneeSearch(e.target.value)}
+                                  className="w-full rounded-md border border-slate-700 bg-slate-900 pl-8 pr-3 py-1.5 text-xs text-slate-200 placeholder:text-slate-500 focus:border-blue-500 focus:outline-none"
+                                />
+                              </div>
+                            </div>
+
+                            {/* Option list */}
+                            <div className="max-h-56 overflow-y-auto py-1">
+                              {/* Unassigned option */}
+                              <button
+                                type="button"
+                                onClick={() => { setNewTaskAssigneeId(""); setAssigneeDropdownOpen(false); }}
+                                className={cn(
+                                  "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors",
+                                  !newTaskAssigneeId
+                                    ? "bg-blue-600/20 text-blue-300"
+                                    : "text-slate-400 hover:bg-slate-800/60 hover:text-slate-200"
+                                )}
+                              >
+                                <span className="text-slate-500">—</span>
+                                <span>Unassigned</span>
+                              </button>
+
+                              {/* Staff Employees Group — strictly staff employees only */}
+                              {filteredStaff.length > 0 ? (
+                                <>
+                                  <div className="flex items-center gap-1.5 px-3 py-1.5 mt-1 border-t border-slate-800/60">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
+                                      👷 Assignable Staff Employees
+                                    </span>
+                                    <span className="ml-auto rounded-full bg-slate-800 px-1.5 py-0.5 text-[9px] font-mono text-slate-400">
+                                      {filteredStaff.length}
+                                    </span>
+                                  </div>
+                                  {filteredStaff.map((emp) => (
+                                    <button
+                                      key={emp.id}
+                                      type="button"
+                                      onClick={() => {
+                                        setNewTaskAssigneeId(emp.id);
+                                        setAssigneeDropdownOpen(false);
+                                        setAssigneeSearch("");
+                                      }}
+                                      className={cn(
+                                        "w-full flex items-center gap-2.5 px-3 py-2 text-xs transition-colors group",
+                                        newTaskAssigneeId === emp.id
+                                          ? "bg-blue-600/20 text-blue-300"
+                                          : "text-slate-300 hover:bg-slate-800/70 hover:text-slate-100"
+                                      )}
+                                    >
+                                      <span className="text-sm shrink-0">{emp.isFree ? "🟢" : "🟡"}</span>
+                                      <div className="flex-1 text-left min-w-0">
+                                        <p className="font-medium truncate">{emp.firstName} {emp.lastName}</p>
+                                        <p className="text-[10px] text-slate-500 group-hover:text-slate-400 truncate">
+                                          {emp.designation}{emp.department ? ` · ${emp.department.name}` : ""}
+                                        </p>
+                                      </div>
+                                      {emp.isFree ? (
+                                        <span className="shrink-0 rounded-full bg-emerald-500/10 border border-emerald-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-400">
+                                          Free
+                                        </span>
+                                      ) : (
+                                        <span className="shrink-0 rounded-full bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 text-[9px] font-semibold text-amber-400">
+                                          Busy
+                                        </span>
+                                      )}
+                                    </button>
+                                  ))}
+                                </>
+                              ) : (
+                                <div className="px-3 py-6 text-center text-xs text-slate-500">
+                                  {assigneeSearch.trim()
+                                    ? `No staff employees match "${assigneeSearch}"`
+                                    : "No staff employees available"}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Selected preview card (shown below trigger when closed) */}
+                      {selectedAssignee && !assigneeDropdownOpen && (
+                        <div className={cn(
+                          "mt-2 rounded-lg px-3 py-2.5 flex items-center gap-3 text-xs border",
+                          selectedAssignee.isFree
+                            ? "bg-emerald-950/50 border-emerald-700/30 text-emerald-300"
+                            : "bg-amber-950/50 border-amber-700/30 text-amber-300"
+                        )}>
+                          <span className="text-base">
+                            {selectedAssignee.isFree ? "🟢" : "🟡"}
+                          </span>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold truncate">{selectedAssignee.firstName} {selectedAssignee.lastName}</p>
+                            <p className="opacity-70 truncate text-[10px]">
+                              {selectedAssignee.isFree
+                                ? `Free · ${selectedAssignee.designation}`
+                                : `Busy · ${selectedAssignee.busyReason || "has active workload"}`}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center gap-2 rounded-lg border border-slate-700 bg-slate-900/60 px-3 py-2.5 text-xs text-slate-200">
+                      <UserCheck className="h-4 w-4 text-blue-400 shrink-0" />
+                      <div className="flex-1 truncate">
+                        <span className="font-semibold text-slate-100">
+                          {user?.employee ? `${user.employee.firstName} ${user.employee.lastName}` : "Self-Assigned"}
+                        </span>
+                        <span className="text-[10px] text-slate-400 ml-1.5">
+                          (Personal Task)
+                        </span>
                       </div>
                     </div>
                   )}
