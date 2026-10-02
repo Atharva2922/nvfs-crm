@@ -126,13 +126,31 @@ export async function PATCH(
       return errorResponse("Employee not found", "NOT_FOUND", 404);
     }
 
+    let newEmail = previous.email;
+    if (body.email && typeof body.email === "string" && body.email.trim()) {
+      const cleanEmail = body.email.trim().toLowerCase();
+      if (cleanEmail !== previous.email) {
+        const dup = await db.employee.findFirst({
+          where: { email: cleanEmail, NOT: { id } },
+        });
+        if (dup) {
+          return errorResponse(`Email [${cleanEmail}] is already assigned to another employee`, "DUPLICATE_EMAIL", 400);
+        }
+        newEmail = cleanEmail;
+      }
+    }
+
     const updated = await db.employee.update({
       where: { id },
       data: {
+        firstName: body.firstName ? body.firstName.trim() : previous.firstName,
+        lastName: body.lastName ? body.lastName.trim() : previous.lastName,
+        email: newEmail,
         designation: body.designation ?? previous.designation,
         departmentId: body.departmentId ?? previous.departmentId,
         managerId: body.managerId !== undefined ? body.managerId : previous.managerId,
         employmentStatus: body.employmentStatus ?? previous.employmentStatus,
+        employmentType: body.employmentType ?? previous.employmentType,
         workMode: body.workMode ?? previous.workMode,
         location: body.location ?? previous.location,
         emergencyContact: body.emergencyContact !== undefined ? body.emergencyContact : previous.emergencyContact,
@@ -143,6 +161,13 @@ export async function PATCH(
         manager: true,
       },
     });
+
+    if (newEmail !== previous.email && previous.userId) {
+      await db.user.update({
+        where: { id: previous.userId },
+        data: { email: newEmail },
+      }).catch(() => {});
+    }
 
     // Record mutation audit diff
     await AuditService.logMutation({

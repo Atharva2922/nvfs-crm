@@ -1,4 +1,5 @@
 import { db } from "@/lib/db";
+import { hashPassword } from "@/lib/auth";
 import { AuditService } from "@/services/audit.service";
 import { NotificationService } from "@/services/notification.service";
 
@@ -34,13 +35,15 @@ export class EmployeeOnboardingService {
 
     // 1. Personal Information (10%)
     const personalMissing: string[] = [];
+    if (!employee.firstName) personalMissing.push("First Name");
+    if (!employee.lastName) personalMissing.push("Last Name");
     if (!prof.dateOfBirth) personalMissing.push("Date of Birth");
     if (!prof.gender) personalMissing.push("Gender");
     if (!prof.maritalStatus) personalMissing.push("Marital Status");
     if (!prof.bloodGroup) personalMissing.push("Blood Group");
     if (!prof.nationality) personalMissing.push("Nationality");
     const personalComplete = personalMissing.length === 0;
-    const personalScore = personalComplete ? 10 : Math.max(0, Math.round(((5 - personalMissing.length) / 5) * 10));
+    const personalScore = personalComplete ? 10 : Math.max(0, Math.round(((7 - personalMissing.length) / 7) * 10));
 
     // 2. Employment Information (10%)
     const employmentMissing: string[] = [];
@@ -308,6 +311,17 @@ export class EmployeeOnboardingService {
       gradeOrGpa,
       certifications,
 
+      // 0. Primary Personnel Identity & Account info
+      firstName,
+      lastName,
+      email,
+      emergencyContact,
+      roleCode,
+      loginPassword,
+      newPassword,
+      isUserActive,
+      createSystemAccount,
+
       // 8. Professional Details
       previousEmployer,
       previousDesignation,
@@ -317,24 +331,135 @@ export class EmployeeOnboardingService {
       portfolioUrl,
     } = payload;
 
+    // Fetch existing employee with user details
+    const currentEmp = await db.employee.findUnique({
+      where: { id: employeeId },
+      include: { user: true },
+    });
+
+    if (!currentEmp) {
+      throw new Error(`Employee with ID ${employeeId} not found`);
+    }
+
     // Update Employee core fields if provided
     const employeeUpdateData: any = {};
-    if (designation !== undefined) employeeUpdateData.designation = designation;
-    if (departmentId !== undefined) employeeUpdateData.departmentId = departmentId;
+    if (firstName !== undefined && typeof firstName === "string" && firstName.trim()) {
+      employeeUpdateData.firstName = firstName.trim();
+    }
+    if (lastName !== undefined && typeof lastName === "string" && lastName.trim()) {
+      employeeUpdateData.lastName = lastName.trim();
+    }
+    if (email !== undefined && typeof email === "string" && email.trim()) {
+      const cleanEmail = email.trim().toLowerCase();
+      if (cleanEmail !== currentEmp.email) {
+        const dup = await db.employee.findFirst({
+          where: { email: cleanEmail, NOT: { id: employeeId } },
+        });
+        if (dup) {
+          throw new Error(`Email [${cleanEmail}] is already assigned to another employee (${dup.firstName} ${dup.lastName})`);
+        }
+        employeeUpdateData.email = cleanEmail;
+      }
+    }
+    if (phone !== undefined) employeeUpdateData.phone = phone;
+    if (designation !== undefined && typeof designation === "string" && designation.trim()) {
+      employeeUpdateData.designation = designation.trim();
+    }
+    if (departmentId !== undefined) employeeUpdateData.departmentId = departmentId || null;
     if (teamId !== undefined) employeeUpdateData.teamId = teamId || null;
     if (managerId !== undefined) employeeUpdateData.managerId = managerId || null;
     if (employmentType !== undefined) employeeUpdateData.employmentType = employmentType;
     if (workMode !== undefined) employeeUpdateData.workMode = workMode;
     if (location !== undefined) employeeUpdateData.location = location;
-    if (hireDate !== undefined) employeeUpdateData.hireDate = new Date(hireDate);
-    if (phone !== undefined) employeeUpdateData.phone = phone;
-    if (primaryContactName !== undefined) employeeUpdateData.emergencyContact = primaryContactName;
+    if (hireDate !== undefined && hireDate) employeeUpdateData.hireDate = new Date(hireDate);
+    if (emergencyContact !== undefined) {
+      employeeUpdateData.emergencyContact = emergencyContact;
+    } else if (primaryContactName !== undefined) {
+      employeeUpdateData.emergencyContact = primaryContactName;
+    }
 
     if (Object.keys(employeeUpdateData).length > 0) {
       await db.employee.update({
         where: { id: employeeId },
         data: employeeUpdateData,
       });
+    }
+
+    // Synchronize linked User account (Email, Role, Password, Active state)
+    const effectiveEmail = employeeUpdateData.email || currentEmp.email;
+    const pwd = (newPassword || loginPassword || "").trim();
+
+    if (currentEmp.userId) {
+      const userUpdateData: any = {};
+      if (employeeUpdateData.email) {
+        const dupUser = await db.user.findFirst({
+          where: { email: employeeUpdateData.email, NOT: { id: currentEmp.userId } },
+        });
+        if (!dupUser) {
+          userUpdateData.email = employeeUpdateData.email;
+        }
+      }
+      if (roleCode && typeof roleCode === "string") {
+        const targetRole = await db.role.findUnique({ where: { code: roleCode } });
+        if (targetRole) {
+          userUpdateData.roleId = targetRole.id;
+          await db.userCompanyMembership.updateMany({
+            where: { userId: currentEmp.userId, organizationId: currentEmp.organizationId },
+            data: { roleId: targetRole.id },
+          }).catch(() => {});
+        }
+      }
+      if (pwd.length >= 6) {
+        userUpdateData.passwordHash = await hashPassword(pwd);
+      }
+      if (isUserActive !== undefined) {
+        userUpdateData.isActive = Boolean(isUserActive);
+      }
+
+      if (Object.keys(userUpdateData).length > 0) {
+        await db.user.update({
+          where: { id: currentEmp.userId },
+          data: userUpdateData,
+        });
+      }
+    } else if (createSystemAccount || pwd.length >= 6) {
+      // Create user account if employee currently doesn't have one
+      const targetRoleCode = roleCode || "EMPLOYEE";
+      let role = await db.role.findUnique({ where: { code: targetRoleCode } });
+      if (!role) role = await db.role.findUnique({ where: { code: "EMPLOYEE" } });
+
+      if (role && effectiveEmail) {
+        const existingUser = await db.user.findUnique({ where: { email: effectiveEmail } });
+        if (!existingUser) {
+          const rawPassword = pwd.length >= 6 ? pwd : "Enterprise@2026";
+          const passwordHash = await hashPassword(rawPassword);
+          const createdUser = await db.user.create({
+            data: {
+              email: effectiveEmail,
+              passwordHash,
+              roleId: role.id,
+              isActive: isUserActive !== undefined ? Boolean(isUserActive) : true,
+            },
+          });
+
+          await db.employee.update({
+            where: { id: employeeId },
+            data: { userId: createdUser.id },
+          });
+
+          if (currentEmp.organizationId) {
+            await db.userCompanyMembership.create({
+              data: {
+                userId: createdUser.id,
+                organizationId: currentEmp.organizationId,
+                roleId: role.id,
+                status: "ACTIVE",
+                isPrimary: true,
+              },
+            }).catch(() => {});
+          }
+        }
+      }
     }
 
     // Upsert EmployeeProfile

@@ -76,6 +76,13 @@ export function EmployeeProfileDossier({
   // Form state holding all 10 sections
   const prof = employee.profile || {};
   const [formData, setFormData] = useState({
+    // 0. Primary Personnel Master Information (Filled on Employee Creation)
+    firstName: employee.firstName || "",
+    lastName: employee.lastName || "",
+    email: employee.email || "",
+    phone: employee.phone || "",
+    emergencyContact: employee.emergencyContact || prof.primaryContactName || "",
+
     // 1. Personal Information
     dateOfBirth: prof.dateOfBirth ? new Date(prof.dateOfBirth).toISOString().split("T")[0] : "",
     gender: prof.gender || "",
@@ -94,7 +101,6 @@ export function EmployeeProfileDossier({
     workMode: employee.workMode || "ON_SITE",
     location: employee.location || "Headquarters (Mumbai)",
     hireDate: employee.hireDate ? new Date(employee.hireDate).toISOString().split("T")[0] : "",
-    phone: employee.phone || "",
 
     // 3. Contact & Address
     currentAddress: prof.currentAddress || "",
@@ -146,6 +152,12 @@ export function EmployeeProfileDossier({
     skills: prof.skills || "",
     linkedinUrl: prof.linkedinUrl || "",
     portfolioUrl: prof.portfolioUrl || "",
+
+    // 10. Access & Permissions / System Credentials
+    roleCode: employee.user?.role?.code || "EMPLOYEE",
+    newPassword: "",
+    isUserActive: employee.user?.isActive ?? true,
+    createSystemAccount: Boolean(employee.userId),
   });
 
   // Action states
@@ -227,6 +239,25 @@ export function EmployeeProfileDossier({
 
       setEmployee(json.data.employee);
       setCompletion(json.data.completion);
+
+      if (json.data.employee) {
+        const emp = json.data.employee;
+        setFormData((prev) => ({
+          ...prev,
+          firstName: emp.firstName || prev.firstName,
+          lastName: emp.lastName || prev.lastName,
+          email: emp.email || prev.email,
+          phone: emp.phone || prev.phone,
+          designation: emp.designation || prev.designation,
+          departmentId: emp.departmentId || prev.departmentId,
+          managerId: emp.managerId || prev.managerId,
+          roleCode: emp.user?.role?.code || prev.roleCode,
+          newPassword: "",
+          isUserActive: emp.user?.isActive ?? prev.isUserActive,
+          createSystemAccount: Boolean(emp.userId),
+        }));
+      }
+
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
       onRefresh?.();
@@ -716,7 +747,78 @@ export function EmployeeProfileDossier({
             <CardContent className="p-6 space-y-6">
               {/* SECTION 1: PERSONAL INFORMATION */}
               {activeTab === "personal" && (
-                <div className="space-y-4">
+                <div className="space-y-5">
+                  {/* Primary Personnel Identity (Filled at Employee Creation) */}
+                  <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-4 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                        <User className="h-3.5 w-3.5 text-blue-400" />
+                        Personnel Master Identity & Contact
+                      </h4>
+                      <Badge variant="outline" size="sm" className="text-[10px] text-blue-300 border-blue-500/40">
+                        Employee ID: {employee.employeeNumber}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          First Name <span className="text-red-400">*</span>
+                        </label>
+                        <Input
+                          required
+                          value={formData.firstName}
+                          onChange={(e) => handleInputChange("firstName", e.target.value)}
+                          placeholder="e.g. John"
+                          className="bg-slate-900 border-slate-700 text-xs font-medium text-white focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          Last Name <span className="text-red-400">*</span>
+                        </label>
+                        <Input
+                          required
+                          value={formData.lastName}
+                          onChange={(e) => handleInputChange("lastName", e.target.value)}
+                          placeholder="e.g. Doe"
+                          className="bg-slate-900 border-slate-700 text-xs font-medium text-white focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          Official Corporate Email <span className="text-red-400">*</span>
+                        </label>
+                        <Input
+                          type="email"
+                          required
+                          value={formData.email}
+                          onChange={(e) => handleInputChange("email", e.target.value)}
+                          placeholder="john.doe@company.com"
+                          className="bg-slate-900 border-slate-700 text-xs font-mono text-white focus:border-blue-500"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Used for CRM system authentication and official communications.
+                        </p>
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          Primary Mobile / Phone
+                        </label>
+                        <Input
+                          value={formData.phone}
+                          onChange={(e) => handleInputChange("phone", e.target.value)}
+                          placeholder="+91 98765 43210"
+                          className="bg-slate-900 border-slate-700 text-xs text-white focus:border-blue-500"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Direct personal line for official notifications and alerts.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Biological and Civil Demographics */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
                       <label className="text-xs font-medium text-slate-300 block mb-1.5">Date of Birth *</label>
@@ -1575,6 +1677,107 @@ export function EmployeeProfileDossier({
               {/* SECTION 10: ACCESS & PERMISSIONS */}
               {activeTab === "access" && (
                 <div className="space-y-6">
+                  {/* Account Settings & Role Configuration Card */}
+                  <div className="rounded-xl border border-blue-500/30 bg-blue-950/20 p-5 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold uppercase tracking-wider text-blue-300 flex items-center gap-1.5">
+                        <Key className="h-3.5 w-3.5 text-blue-400" />
+                        CRM Authentication & RBAC Role Assignment
+                      </h4>
+                      <Badge variant={employee.user ? "success" : "default"} size="sm">
+                        {employee.user ? "ACCOUNT CONFIGURED" : "NO SYSTEM ACCOUNT"}
+                      </Badge>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          Assigned System Role (RBAC) *
+                        </label>
+                        <Select
+                          value={formData.roleCode}
+                          onChange={(e) => handleInputChange("roleCode", e.target.value)}
+                          options={[
+                            { label: "Staff Employee (EMPLOYEE)", value: "EMPLOYEE" },
+                            { label: "Line Manager (MANAGER)", value: "MANAGER" },
+                            { label: "Department Head (DEPARTMENT_HEAD)", value: "DEPARTMENT_HEAD" },
+                            { label: "Chief Human Resources Officer (HR)", value: "HR" },
+                            { label: "Platform Administrator (ADMIN)", value: "ADMIN" },
+                            { label: "Chief Operating Officer (COO)", value: "COO" },
+                            { label: "Chief Marketing Officer (CMO)", value: "CMO" },
+                            { label: "Chief Technology Officer (CTO)", value: "CTO" },
+                            { label: "Chief Financial Officer (CFO)", value: "CFO" },
+                            { label: "Chief Executive Officer (CEO)", value: "CEO" },
+                            { label: "Super Admin (SUPER_ADMIN)", value: "SUPER_ADMIN" },
+                          ]}
+                          className="bg-slate-900 border-slate-700 text-xs text-white"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Controls navigation menus, permission scopes, and managerial approval rights.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          CRM Login Password (Reset / Update)
+                        </label>
+                        <Input
+                          type="password"
+                          value={formData.newPassword}
+                          onChange={(e) => handleInputChange("newPassword", e.target.value)}
+                          placeholder="Enter new password (min 6 chars)"
+                          className="bg-slate-900 border-slate-700 text-xs text-white placeholder:text-slate-500"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          {employee.user
+                            ? "Leave blank to keep current password. Enter 6+ characters to reset."
+                            : "Enter a password to initialize CRM login credentials for this employee."}
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          Portal Account Status
+                        </label>
+                        <Select
+                          value={formData.isUserActive ? "ACTIVE" : "INACTIVE"}
+                          onChange={(e) => handleInputChange("isUserActive", e.target.value === "ACTIVE")}
+                          options={[
+                            { label: "Active (Sign-in enabled)", value: "ACTIVE" },
+                            { label: "Suspended / Inactive (Sign-in disabled)", value: "INACTIVE" },
+                          ]}
+                          className="bg-slate-900 border-slate-700 text-xs text-white"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Controls whether this employee can sign into the portal.
+                        </p>
+                      </div>
+
+                      <div>
+                        <label className="text-xs font-medium text-slate-200 block mb-1.5">
+                          Sign-In Username / Corporate Email
+                        </label>
+                        <Input
+                          disabled
+                          value={formData.email}
+                          className="bg-slate-950 border-slate-800 text-xs font-mono text-blue-400 cursor-not-allowed"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">
+                          Editable under Section 1 (Personal Information).
+                        </p>
+                      </div>
+                    </div>
+
+                    {!employee.user && (
+                      <div className="flex items-center gap-2 p-3 rounded-lg bg-blue-950/40 border border-blue-800/60 text-blue-200 text-xs">
+                        <Key className="h-4 w-4 shrink-0 text-blue-400" />
+                        <span>
+                          This employee currently does not have a CRM system user account. Entering a password above and clicking <strong>Save</strong> will create their login account immediately.
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-2">
                       <div className="flex items-center justify-between">
@@ -1593,9 +1796,9 @@ export function EmployeeProfileDossier({
 
                     <div className="rounded-xl border border-slate-800 bg-slate-900/60 p-4 space-y-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-xs font-semibold text-slate-300">Assigned Role & Level</span>
+                        <span className="text-xs font-semibold text-slate-300">Current Assigned Role</span>
                         <span className="font-mono text-xs text-blue-400 font-semibold bg-blue-950 px-2 py-0.5 rounded border border-blue-800/50">
-                          {employee.user?.role?.code || "EMPLOYEE"}
+                          {employee.user?.role?.code || formData.roleCode || "EMPLOYEE"}
                         </span>
                       </div>
                       <p className="text-xs text-slate-300 font-medium">
