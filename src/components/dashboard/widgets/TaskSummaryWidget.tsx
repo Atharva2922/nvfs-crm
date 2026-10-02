@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { CheckSquare, AlertCircle, Clock, CheckCircle2, ArrowRight } from "lucide-react";
+import { formatShortDate } from "@/lib/utils";
 
 interface TaskSummaryWidgetProps {
   employeeId?: string;
@@ -121,8 +122,8 @@ export function TaskSummaryWidget({ employeeId, scope = "SELF", initialData }: T
                 />
                 <span className="truncate font-medium text-slate-800 dark:text-slate-200">{task.title}</span>
               </div>
-              <span className="shrink-0 text-[10px] text-slate-400 font-mono">
-                {task.dueDate ? new Date(task.dueDate).toLocaleDateString([], { month: "short", day: "numeric" }) : "No due date"}
+              <span suppressHydrationWarning className="shrink-0 text-[10px] text-slate-400 font-mono">
+                {task.dueDate ? formatShortDate(task.dueDate) : "No due date"}
               </span>
             </div>
           ))}

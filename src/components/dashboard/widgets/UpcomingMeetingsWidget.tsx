@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Calendar as CalendarIcon, Video, MapPin, ArrowRight } from "lucide-react";
+import { formatTime } from "@/lib/utils";
 
 export interface MeetingItem {
   id: string;
@@ -79,8 +80,8 @@ export function UpcomingMeetingsWidget({ initialMeetings }: UpcomingMeetingsWidg
               <div className="truncate pr-2">
                 <p className="font-semibold text-slate-800 dark:text-slate-200 truncate">{item.title}</p>
                 <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                  <span className="font-mono">
-                    {new Date(item.startDate).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                  <span suppressHydrationWarning className="font-mono">
+                    {formatTime(item.startDate)}
                   </span>
                   {item.meetUrl ? (
                     <span className="flex items-center gap-1 text-purple-500 font-medium">

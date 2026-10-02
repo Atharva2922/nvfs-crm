@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { Bell, ArrowRight, Check } from "lucide-react";
+import { formatShortDate } from "@/lib/utils";
 
 export interface NotificationItem {
   id: string;
@@ -86,8 +87,8 @@ export function RecentNotificationsWidget({ initialNotifications }: RecentNotifi
             >
               <div className="flex justify-between items-start">
                 <span className="truncate pr-2 font-semibold">{item.title}</span>
-                <span className="text-[9px] text-slate-400 font-mono shrink-0">
-                  {new Date(item.createdAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                <span suppressHydrationWarning className="text-[9px] text-slate-400 font-mono shrink-0">
+                  {formatShortDate(item.createdAt)}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">

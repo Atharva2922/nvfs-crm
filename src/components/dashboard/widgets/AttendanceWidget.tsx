@@ -108,7 +108,7 @@ export function AttendanceWidget({ employeeId, initialRecord }: AttendanceWidget
 
   const formatTime = (timeStr?: string | null) => {
     if (!timeStr) return "--:--";
-    return new Date(timeStr).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    return new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit" }).format(new Date(timeStr));
   };
 
   return (
@@ -145,13 +145,13 @@ export function AttendanceWidget({ employeeId, initialRecord }: AttendanceWidget
           <div className="grid grid-cols-2 gap-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 p-3 border border-slate-100 dark:border-slate-800">
             <div>
               <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">Check-In</span>
-              <p className="text-sm font-semibold font-mono text-slate-800 dark:text-slate-200 mt-0.5">
+              <p suppressHydrationWarning className="text-sm font-semibold font-mono text-slate-800 dark:text-slate-200 mt-0.5">
                 {formatTime(todayRecord?.checkInTime)}
               </p>
             </div>
             <div>
               <span className="text-[10px] font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">Check-Out</span>
-              <p className="text-sm font-semibold font-mono text-slate-800 dark:text-slate-200 mt-0.5">
+              <p suppressHydrationWarning className="text-sm font-semibold font-mono text-slate-800 dark:text-slate-200 mt-0.5">
                 {formatTime(todayRecord?.checkOutTime)}
               </p>
             </div>
