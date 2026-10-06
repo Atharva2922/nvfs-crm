@@ -37,13 +37,13 @@ import {
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { CrmCockpitData } from "@/services/crm-dashboard.service";
-
-interface EmployeeOption {
-  id: string;
-  firstName: string;
-  lastName: string;
-  designation?: string | null;
-}
+import { fetchCrmEmployees, CrmEmployeeOption } from "@/lib/crm-cache";
+import {
+  CrmKpiSkeleton,
+  CrmPipelineStagesSkeleton,
+  CrmFunnelSkeleton,
+  CrmListWidgetSkeleton,
+} from "@/components/crm/crm-skeletons";
 
 export default function CrmCockpitPage() {
   const router = useRouter();
@@ -51,7 +51,7 @@ export default function CrmCockpitPage() {
   const searchParams = useSearchParams();
 
   const [data, setData] = useState<CrmCockpitData | null>(null);
-  const [employees, setEmployees] = useState<EmployeeOption[]>([]);
+  const [employees, setEmployees] = useState<CrmEmployeeOption[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Filters
@@ -99,11 +99,8 @@ export default function CrmCockpitPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employees?limit=100");
-      const json = await res.json();
-      if (json.success && json.data?.employees) {
-        setEmployees(json.data.employees);
-      }
+      const emps = await fetchCrmEmployees();
+      setEmployees(emps);
     } catch {}
   };
 
@@ -478,7 +475,10 @@ export default function CrmCockpitPage() {
       </div>
 
       {/* Core 8 KPI Command Grid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      {loading && !data ? (
+        <CrmKpiSkeleton count={8} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* 1. Open Pipeline Value */}
         <Link
           href="/app/crm/opportunities"
@@ -678,7 +678,8 @@ export default function CrmCockpitPage() {
             {summary.overdueTasksCount > 0 ? `${summary.overdueTasksCount} overdue action items!` : "All deliverables on schedule"}
           </p>
         </Link>
-      </div>
+        </div>
+      )}
 
       {/* Interactive Sales Pipeline Stage Distribution */}
       <div className="rounded-xl border border-slate-800 bg-[#0f172a] p-5">
@@ -698,41 +699,45 @@ export default function CrmCockpitPage() {
           </Link>
         </div>
 
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
-          {[
-            { key: "DISCOVERY", label: "Discovery", color: "border-sky-500/40 text-sky-400", prob: "25%" },
-            { key: "PROPOSAL", label: "Proposal", color: "border-indigo-500/40 text-indigo-400", prob: "50%" },
-            { key: "NEGOTIATION", label: "Negotiation", color: "border-amber-500/40 text-amber-400", prob: "75%" },
-            { key: "CLOSED_WON", label: "Closed Won", color: "border-emerald-500/40 text-emerald-400", prob: "100%" },
-            { key: "CLOSED_LOST", label: "Closed Lost", color: "border-rose-500/40 text-rose-400", prob: "0%" },
-          ].map((stage) => {
-            const item = data?.stageBreakdown?.[stage.key] || { count: 0, value: 0, weightedValue: 0 };
-            return (
-              <Link
-                key={stage.key}
-                href={`/app/crm/opportunities?stage=${stage.key}`}
-                className={cn(
-                  "rounded-lg border bg-[#0c1322] p-3 text-left transition-all hover:border-slate-600 group",
-                  stage.color
-                )}
-              >
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
-                  <span className="font-semibold uppercase group-hover:text-white transition-colors">{stage.label}</span>
-                  <span className="font-mono text-slate-500">{stage.prob}</span>
-                </div>
-                <h4 className="text-base font-bold text-white">
-                  ₹{item.value.toLocaleString()}
-                </h4>
-                <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                  <span>{item.count} deal(s)</span>
-                  {item.weightedValue > 0 && (
-                    <span className="font-mono text-[9px] text-emerald-400">₹{Math.round(item.weightedValue).toLocaleString()} wtd</span>
+        {loading && !data ? (
+          <CrmPipelineStagesSkeleton />
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+            {[
+              { key: "DISCOVERY", label: "Discovery", color: "border-sky-500/40 text-sky-400", prob: "25%" },
+              { key: "PROPOSAL", label: "Proposal", color: "border-indigo-500/40 text-indigo-400", prob: "50%" },
+              { key: "NEGOTIATION", label: "Negotiation", color: "border-amber-500/40 text-amber-400", prob: "75%" },
+              { key: "CLOSED_WON", label: "Closed Won", color: "border-emerald-500/40 text-emerald-400", prob: "100%" },
+              { key: "CLOSED_LOST", label: "Closed Lost", color: "border-rose-500/40 text-rose-400", prob: "0%" },
+            ].map((stage) => {
+              const item = data?.stageBreakdown?.[stage.key] || { count: 0, value: 0, weightedValue: 0 };
+              return (
+                <Link
+                  key={stage.key}
+                  href={`/app/crm/opportunities?stage=${stage.key}`}
+                  className={cn(
+                    "rounded-lg border bg-[#0c1322] p-3 text-left transition-all hover:border-slate-600 group",
+                    stage.color
                   )}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
+                >
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                    <span className="font-semibold uppercase group-hover:text-white transition-colors">{stage.label}</span>
+                    <span className="font-mono text-slate-500">{stage.prob}</span>
+                  </div>
+                  <h4 className="text-base font-bold text-white">
+                    ₹{item.value.toLocaleString()}
+                  </h4>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                    <span>{item.count} deal(s)</span>
+                    {item.weightedValue > 0 && (
+                      <span className="font-mono text-[9px] text-emerald-400">₹{Math.round(item.weightedValue).toLocaleString()} wtd</span>
+                    )}
+                  </div>
+                </Link>
+              );
+            })}
+          </div>
+        )}
       </div>
 
       {/* Two Column Grid: Lead Funnel & Won/Lost Comparative Analysis */}
@@ -752,7 +757,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="space-y-2.5">
-            {(!data?.leadFunnel?.stages || data.leadFunnel.stages.length === 0) ? (
+            {loading && !data ? (
+              <CrmFunnelSkeleton />
+            ) : (!data?.leadFunnel?.stages || data.leadFunnel.stages.length === 0) ? (
               <p className="text-xs text-slate-500 py-6 text-center">No leads recorded for conversion analysis.</p>
             ) : (
               data.leadFunnel.stages.map((st) => (
@@ -828,7 +835,9 @@ export default function CrmCockpitPage() {
           </div>
 
           {/* Loss Reasons Breakdown */}
-          {data?.wonLostAnalysis?.lossReasons && data.wonLostAnalysis.lossReasons.length > 0 ? (
+          {loading && !data ? (
+            <CrmListWidgetSkeleton rows={2} />
+          ) : data?.wonLostAnalysis?.lossReasons && data.wonLostAnalysis.lossReasons.length > 0 ? (
             <div>
               <span className="text-[10px] font-semibold uppercase text-slate-400 tracking-wider block mb-2">
                 Primary Reasons for Deal Loss:
@@ -869,7 +878,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.topOpportunities || data.topOpportunities.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={4} />
+            ) : (!data?.topOpportunities || data.topOpportunities.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">No active opportunities in pipeline.</div>
             ) : (
               data.topOpportunities.map((opp) => (
@@ -909,7 +920,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.staleOpportunities || data.staleOpportunities.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={4} />
+            ) : (!data?.staleOpportunities || data.staleOpportunities.length === 0) ? (
               <div className="p-8 text-center text-xs text-emerald-400/80">
                 ✓ All active deals have recent progression activity.
               </div>
@@ -958,7 +971,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.topClients || data.topClients.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={4} />
+            ) : (!data?.topClients || data.topClients.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">No clients registered.</div>
             ) : (
               data.topClients.map((client) => (
@@ -1005,7 +1020,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="space-y-3">
-            {(!data?.salesTrend || data.salesTrend.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={4} />
+            ) : (!data?.salesTrend || data.salesTrend.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">No telemetry data.</div>
             ) : (
               data.salesTrend.map((st) => (
@@ -1048,7 +1065,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.upcomingMeetings || data.upcomingMeetings.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={3} />
+            ) : (!data?.upcomingMeetings || data.upcomingMeetings.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">
                 No upcoming client meetings scheduled.
               </div>
@@ -1098,7 +1117,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.pendingTasks || data.pendingTasks.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={3} />
+            ) : (!data?.pendingTasks || data.pendingTasks.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">
                 No pending tasks tagged to clients.
               </div>
@@ -1147,7 +1168,9 @@ export default function CrmCockpitPage() {
           <span className="text-[11px] text-slate-400">Live multi-channel touchpoints</span>
         </div>
 
-        {(!data?.recentActivities || data.recentActivities.length === 0) ? (
+        {loading && !data ? (
+          <CrmListWidgetSkeleton rows={4} />
+        ) : (!data?.recentActivities || data.recentActivities.length === 0) ? (
           <div className="p-10 text-center text-xs text-slate-500">
             No customer activities recorded yet. Touchpoints logged from client pages will appear here.
           </div>
@@ -1203,7 +1226,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.recentClients || data.recentClients.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={3} />
+            ) : (!data?.recentClients || data.recentClients.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">
                 No client accounts created yet.
               </div>
@@ -1262,7 +1287,9 @@ export default function CrmCockpitPage() {
           </div>
 
           <div className="divide-y divide-slate-800/60">
-            {(!data?.recentLeads || data.recentLeads.length === 0) ? (
+            {loading && !data ? (
+              <CrmListWidgetSkeleton rows={3} />
+            ) : (!data?.recentLeads || data.recentLeads.length === 0) ? (
               <div className="p-8 text-center text-xs text-slate-500">
                 No inbound leads captured yet.
               </div>

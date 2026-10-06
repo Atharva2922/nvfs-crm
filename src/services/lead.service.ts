@@ -46,7 +46,12 @@ interface CachedLeadQuery {
 const leadQueryCache = new Map<string, CachedLeadQuery>();
 const LEAD_CACHE_TTL_MS = 20 * 1000; // 20 seconds
 
+import { invalidateCrmDashboardCache } from "./crm-dashboard.service";
+
 export function invalidateLeadCache(organizationId?: string) {
+  try {
+    invalidateCrmDashboardCache(organizationId);
+  } catch {}
   if (organizationId) {
     for (const key of leadQueryCache.keys()) {
       if (key.startsWith(`${organizationId}:`)) {

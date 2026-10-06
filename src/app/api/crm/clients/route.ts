@@ -43,6 +43,7 @@ export async function GET(req: NextRequest) {
       limit: searchParams.has("limit") ? parseInt(searchParams.get("limit")!, 10) : undefined,
       sortBy: searchParams.get("sortBy") || undefined,
       sortOrder: (searchParams.get("sortOrder") as "asc" | "desc") || undefined,
+      lite: searchParams.get("lite") === "true" || searchParams.get("select") === "dropdown",
     };
 
     const result = await ClientService.getClients(user, filters);

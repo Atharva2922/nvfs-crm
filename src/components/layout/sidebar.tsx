@@ -132,8 +132,6 @@ export function Sidebar() {
         { title: "Platform Overview", href: "/app/super-admin", icon: Server },
         { title: "Persona & Role Allocations", href: "/app/super-admin#personas", icon: ShieldAlert },
         { title: "Company Management", href: "/app/super-admin/companies", icon: Building },
-        { title: "Platform Health", href: "/app/super-admin#health", icon: Activity },
-        { title: "Global Audit Trail", href: "/app/super-admin#audit", icon: ShieldAlert },
         { title: "Platform Settings", href: "/app/super-admin/settings", icon: Settings },
       ],
     });

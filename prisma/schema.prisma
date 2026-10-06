@@ -1143,6 +1143,8 @@ model Client {
   @@index([ownerId])
   @@index([status])
   @@index([name])
+  @@index([organizationId, status])
+  @@index([organizationId, updatedAt])
 }
 
 // ==========================================
@@ -1211,6 +1213,7 @@ model Lead {
   @@index([companyName])
   @@index([email])
   @@index([organizationId, status])
+  @@index([organizationId, createdAt])
 }
 
 // ==========================================
@@ -1252,6 +1255,8 @@ model Opportunity {
   @@index([stage])
   @@index([expectedCloseDate])
   @@index([organizationId, stage])
+  @@index([organizationId, expectedCloseDate])
+  @@index([organizationId, createdAt])
 }
 
 // ==========================================
@@ -1284,6 +1289,7 @@ model CrmActivity {
   @@index([opportunityId])
   @@index([performedAt])
   @@index([type])
+  @@index([organizationId, performedAt])
 }
 
 // ==========================================

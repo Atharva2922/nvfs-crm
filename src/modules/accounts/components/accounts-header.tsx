@@ -9,7 +9,6 @@ import {
   Calendar,
   Building2,
   ChevronDown,
-  Database,
   FileText,
   CreditCard,
   BookOpenCheck,
@@ -87,6 +86,7 @@ export function AccountsHeader({
     : user?.email?.split("@")[0] || "Accountant";
   const avatarLetter = (displayName[0] || "A").toUpperCase();
   const displayTitle = user?.employee?.designation || "Accountant";
+  const avatarUrl = (user?.employee as any)?.avatarUrl || (user as any)?.avatarUrl;
 
   const periods = [
     "This Month",
@@ -335,12 +335,6 @@ export function AccountsHeader({
 
       {/* Right: Quick Tools & Signed-In Account Profile */}
       <div className="flex items-center gap-3">
-        {/* Database Status Pill */}
-        <div className="hidden xl:flex items-center gap-1.5 rounded-md border border-emerald-400/40 dark:border-emerald-500/30 bg-emerald-500/10 dark:bg-emerald-950/40 px-2.5 py-1 text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
-          <Database className="h-3 w-3 text-emerald-600 dark:text-emerald-400" />
-          <span>Tenant Isolated</span>
-        </div>
-
         {/* Theme Toggle */}
         <ThemeToggle />
 
@@ -354,26 +348,25 @@ export function AccountsHeader({
         <div className="relative">
           <button
             onClick={() => setProfileDropdownOpen(!profileDropdownOpen)}
-            className="flex items-center gap-2 rounded-md border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-900/90 px-2.5 py-1 text-xs hover:border-blue-400/50 dark:hover:border-blue-500/40 transition-all shadow-xs"
+            title={`${displayName} (${displayTitle})`}
+            aria-label="User profile options"
+            className="relative flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border-2 border-slate-200 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 transition-all shadow-xs overflow-hidden cursor-pointer group"
           >
-            <div
-              className="flex h-6 w-6 items-center justify-center rounded text-[11px] font-bold text-white shadow-xs"
-              style={{ backgroundColor: primaryColor }}
-            >
-              {avatarLetter}
-            </div>
-            <div className="flex flex-col text-left">
-              <span className="text-[11px] font-medium text-slate-800 dark:text-slate-200 leading-tight truncate max-w-[120px]">
-                {displayName}
-              </span>
-              <span
-                className="text-[9px] font-semibold leading-none truncate max-w-[120px]"
-                style={{ color: primaryColor }}
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt={displayName}
+                className="h-full w-full object-cover rounded-full"
+              />
+            ) : (
+              <div
+                className="flex h-full w-full items-center justify-center font-bold text-xs sm:text-sm text-white transition-transform group-hover:scale-105"
+                style={{ backgroundColor: primaryColor }}
               >
-                {displayTitle}
-              </span>
-            </div>
-            <ChevronDown className="h-3 w-3 text-slate-400 ml-1 shrink-0" />
+                {avatarLetter}
+              </div>
+            )}
+            <span className="sr-only">Toggle user menu</span>
           </button>
 
           {profileDropdownOpen && (

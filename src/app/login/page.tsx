@@ -102,42 +102,47 @@ export default function LoginPage() {
             </h2>
           </div>
 
-          {/* ── Image layout: 1 big top-center, 4 small in a row below ── */}
-          <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-4 px-6 pb-6">
+          {/* ── Image layout: 2 upside (Naree Foundation & Venture Studio), 3 at bottom ── */}
+          <div className="relative z-10 flex flex-1 flex-col items-center justify-center gap-5 px-6 pb-6">
 
-            {/* Big square — NFVS Venture Studio */}
-            <div className="w-[180px] h-[180px] shrink-0 overflow-hidden rounded-2xl border border-[#2a3f5f] bg-white shadow-xl">
-              <img
-                src="/logos/nfvs-venture-studio-logo.jpg"
-                alt="Naree Foundation Venture Studio"
-                className="h-full w-full object-contain p-3"
-              />
-            </div>
-
-            {/* 4 small squares in a single row */}
-            <div className="flex flex-row gap-3">
-              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+            {/* Top row: 2 squares (Naree Foundation & Naree Foundation Venture Studio) */}
+            <div className="flex flex-row items-center justify-center gap-5">
+              <div className="w-[145px] h-[145px] xl:w-[160px] xl:h-[160px] shrink-0 overflow-hidden rounded-2xl border border-[#2a3f5f] bg-white shadow-xl hover:border-blue-400/50 hover:shadow-blue-500/10 transition-all">
                 <img
                   src="/logos/naree-foundation-logo.jpg"
                   alt="Naree Foundation"
-                  className="h-full w-full object-contain p-2.5"
+                  className="h-full w-full object-contain p-3"
                 />
               </div>
-              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+
+              <div className="w-[145px] h-[145px] xl:w-[160px] xl:h-[160px] shrink-0 overflow-hidden rounded-2xl border border-[#2a3f5f] bg-white shadow-xl hover:border-blue-400/50 hover:shadow-blue-500/10 transition-all">
+                <img
+                  src="/logos/nfvs-venture-studio-logo.jpg"
+                  alt="Naree Foundation Venture Studio"
+                  className="h-full w-full object-contain p-3"
+                />
+              </div>
+            </div>
+
+            {/* Bottom row: 3 squares (Naree Care Service, Quality Pest Control, Nirlesh Foods) */}
+            <div className="flex flex-row items-center justify-center gap-3.5 xl:gap-4">
+              <div className="w-[105px] h-[105px] xl:w-[118px] xl:h-[118px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md hover:border-blue-400/40 transition-all">
                 <img
                   src="/logos/naree-care-service-logo.jpg"
                   alt="Naree Care Service"
                   className="h-full w-full object-contain p-2.5"
                 />
               </div>
-              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+
+              <div className="w-[105px] h-[105px] xl:w-[118px] xl:h-[118px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md hover:border-blue-400/40 transition-all">
                 <img
                   src="/logos/quality-pest-control-logo.jpg"
                   alt="Quality Pest Control & Allied Services"
                   className="h-full w-full object-contain p-2.5"
                 />
               </div>
-              <div className="w-[108px] h-[108px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md">
+
+              <div className="w-[105px] h-[105px] xl:w-[118px] xl:h-[118px] shrink-0 overflow-hidden rounded-xl border border-[#2a3f5f] bg-white shadow-md hover:border-blue-400/40 transition-all">
                 <img
                   src="/logos/nirlesh-foods-logo.jpg"
                   alt="Nirlesh Foods"

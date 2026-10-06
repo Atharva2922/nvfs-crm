@@ -23,6 +23,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Pagination } from "@/components/ui/pagination";
 import { ArrowUpDown, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
+import { fetchCrmEmployees } from "@/lib/crm-cache";
+import { CrmTableSkeleton } from "@/components/crm/crm-skeletons";
+import { CtaButton } from "@/components/ui/cta-button";
 
 interface ClientListItem {
   id: string;
@@ -52,7 +55,7 @@ interface EmployeeOption {
   id: string;
   firstName: string;
   lastName: string;
-  designation: string;
+  designation?: string | null;
 }
 
 export default function ClientsDirectoryPage() {
@@ -133,11 +136,8 @@ export default function ClientsDirectoryPage() {
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employees?limit=100");
-      const data = await res.json();
-      if (data.success) {
-        setEmployees(data.data.employees || []);
-      }
+      const data = await fetchCrmEmployees();
+      setEmployees(data);
     } catch {}
   };
 
@@ -462,8 +462,20 @@ export default function ClientsDirectoryPage() {
 
       {/* Clients Table */}
       <div className="rounded-xl border border-slate-800 bg-[#0c1322] overflow-hidden">
-        {loading ? (
-          <div className="p-16 text-center text-xs text-slate-500">Loading client directory...</div>
+        {loading && clients.length === 0 ? (
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-slate-800 bg-[#0f172a] text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Client Account</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3">Tier</th>
+                <th className="px-4 py-3">Key Contact</th>
+                <th className="px-4 py-3">Lead Rep</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <CrmTableSkeleton columns={6} rows={limit} />
+          </table>
         ) : clients.length === 0 ? (
           <div className="p-16 text-center text-xs">
             <p className="text-slate-300 font-medium text-sm">
@@ -748,13 +760,14 @@ export default function ClientsDirectoryPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <CtaButton
                   type="submit"
-                  disabled={isCreating}
-                  className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50"
+                  loading={isCreating}
+                  minWidth="min-w-[130px]"
+                  className="bg-blue-600 hover:bg-blue-500"
                 >
-                  {isCreating ? "Creating..." : "Save Account"}
-                </button>
+                  Save Account
+                </CtaButton>
               </div>
             </form>
           </div>

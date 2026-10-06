@@ -76,6 +76,31 @@ export async function GET(req: NextRequest) {
       where.designation = designation;
     }
 
+    const isLite = searchParams.get("lite") === "true" || searchParams.get("select") === "dropdown";
+    if (isLite) {
+      const liteEmployees = await db.employee.findMany({
+        where,
+        take: limit,
+        orderBy: [{ lastName: "asc" }, { firstName: "asc" }],
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          designation: true,
+          departmentId: true,
+          organizationId: true,
+        },
+      });
+
+      return successResponse({
+        employees: liteEmployees,
+        total: liteEmployees.length,
+        page: 1,
+        limit,
+        totalPages: 1,
+      });
+    }
+
     const [totalCount, rawEmployees] = await Promise.all([
       db.employee.count({ where }),
       db.employee.findMany({

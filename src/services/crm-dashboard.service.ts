@@ -1,7 +1,7 @@
 import { db } from "@/lib/db";
 import { AuthenticatedUser } from "@/types";
 import { LeadService } from "./lead.service";
-import { buildCrmScopeFilter, parseCrmDateRange, CRMDateRangePreset } from "@/lib/crm-query";
+import { buildCrmScopeFilter, parseCrmDateRange } from "@/lib/crm-query";
 
 export interface CrmDashboardOptions {
   datePreset?: string;
@@ -177,6 +177,28 @@ export interface CrmCockpitData {
   }>;
 }
 
+interface CachedCockpit {
+  data: CrmCockpitData;
+  cachedAt: number;
+}
+
+const cockpitCache = new Map<string, CachedCockpit>();
+const inFlightCockpitPromises = new Map<string, Promise<CrmCockpitData>>();
+const COCKPIT_CACHE_TTL_MS = 25 * 1000; // 25 seconds fresh cache
+
+export function invalidateCrmDashboardCache(organizationId?: string) {
+  inFlightCockpitPromises.clear();
+  if (organizationId) {
+    for (const key of cockpitCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        cockpitCache.delete(key);
+      }
+    }
+  } else {
+    cockpitCache.clear();
+  }
+}
+
 export class CrmDashboardService {
   /**
    * Aggregates real DB data for the CRM Dashboard & Analytics Command Center
@@ -188,6 +210,36 @@ export class CrmDashboardService {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
 
     const orgId = user.employee.organizationId;
+    const optKey = JSON.stringify(options);
+    const cacheKey = `${orgId}:${user.id}:${optKey}`;
+    const cached = cockpitCache.get(cacheKey);
+    const nowMs = Date.now();
+    if (cached && nowMs - cached.cachedAt < COCKPIT_CACHE_TTL_MS) {
+      return cached.data;
+    }
+
+    const inFlight = inFlightCockpitPromises.get(cacheKey);
+    if (inFlight) {
+      return inFlight;
+    }
+
+    const loadPromise = this.fetchCockpitMetricsInternal(user, options, orgId);
+    inFlightCockpitPromises.set(cacheKey, loadPromise);
+
+    try {
+      const data = await loadPromise;
+      cockpitCache.set(cacheKey, { data, cachedAt: Date.now() });
+      return data;
+    } finally {
+      inFlightCockpitPromises.delete(cacheKey);
+    }
+  }
+
+  private static async fetchCockpitMetricsInternal(
+    user: AuthenticatedUser,
+    options: CrmDashboardOptions,
+    orgId: string
+  ): Promise<CrmCockpitData> {
     const now = new Date();
 
     // 1. Build secure scope filters using centralized query utility
@@ -245,7 +297,7 @@ export class CrmDashboardService {
     const activityWhere: any = { organizationId: orgId };
     if (options.ownerId) {
       activityWhere.performedById = options.ownerId;
-    } else if (!LeadService.isExecutive(user) && user.roleCode !== "DEPARTMENT_HEAD") {
+    } else if (!LeadService.isExecutive(user) && user.roleCode !== "DEPARTMENT_HEAD" && user.employee?.id) {
       activityWhere.performedById = user.employee.id;
     }
     if (dateRange) {
@@ -264,7 +316,6 @@ export class CrmDashboardService {
     // Previous period for historical comparison (if date preset provided and not ALL)
     let prevLeadCount: number | null = null;
     let prevWonRevenue: number | null = null;
-    let prevPipelineValue: number | null = null;
     let prevActiveClientsCount: number | null = null;
 
     if (dateRange?.gte && dateRange?.lte) {
@@ -312,6 +363,7 @@ export class CrmDashboardService {
           owner: { select: { firstName: true, lastName: true } },
         },
         orderBy: { createdAt: "desc" },
+        take: 300,
       }),
       db.client.findMany({
         where: clientWhere,
@@ -332,6 +384,7 @@ export class CrmDashboardService {
           },
         },
         orderBy: { updatedAt: "desc" },
+        take: 150,
       }),
       db.opportunity.findMany({
         where: oppWhere,
@@ -350,6 +403,7 @@ export class CrmDashboardService {
           owner: { select: { id: true, firstName: true, lastName: true } },
         },
         orderBy: { value: "desc" },
+        take: 150,
       }),
       db.task.findMany({
         where: taskWhere,
@@ -363,6 +417,7 @@ export class CrmDashboardService {
           assignee: { select: { firstName: true, lastName: true } },
         },
         orderBy: { dueDate: "asc" },
+        take: 150,
       }),
       db.calendarEvent.findMany({
         where: {
@@ -408,6 +463,7 @@ export class CrmDashboardService {
           status: true,
           invoiceDate: true,
         },
+        take: 200,
       }),
     ]);
 
@@ -645,7 +701,7 @@ export class CrmDashboardService {
 
     // 12. Period-over-Period Changes
     let leadsChangePct: number | null = null;
-    let pipelineChangePct: number | null = null;
+    const pipelineChangePct: number | null = null;
     let wonRevenueChangePct: number | null = null;
     let activeClientsChangePct: number | null = null;
 

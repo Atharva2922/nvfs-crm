@@ -16,6 +16,37 @@ export interface CreateOpportunityInput {
   notes?: string;
 }
 
+interface CachedOppQuery {
+  data: any;
+  cachedAt: number;
+}
+const opportunityQueryCache = new Map<string, CachedOppQuery>();
+const metricsCache = new Map<string, CachedOppQuery>();
+const OPP_CACHE_TTL_MS = 25 * 1000;
+
+import { invalidateCrmDashboardCache } from "./crm-dashboard.service";
+
+export function invalidateOpportunityCache(organizationId?: string) {
+  try {
+    invalidateCrmDashboardCache(organizationId);
+  } catch {}
+  if (organizationId) {
+    for (const key of opportunityQueryCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        opportunityQueryCache.delete(key);
+      }
+    }
+    for (const key of metricsCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        metricsCache.delete(key);
+      }
+    }
+  } else {
+    opportunityQueryCache.clear();
+    metricsCache.clear();
+  }
+}
+
 export class OpportunityService {
   static isExecutive(user: AuthenticatedUser): boolean {
     const execRoles = ["SUPER_ADMIN", "CHAIRPERSON", "CEO", "ADMIN", "COO", "CTO", "CFO", "CMO"];
@@ -50,6 +81,15 @@ export class OpportunityService {
     } = {}
   ) {
     if (!user.employee) throw new Error("Authenticated user has no employee profile");
+
+    const orgId = user.employee.organizationId;
+    const filterKey = JSON.stringify(filters);
+    const cacheKey = `${orgId}:${user.id}:${filterKey}`;
+    const cached = opportunityQueryCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < OPP_CACHE_TTL_MS) {
+      return cached.data;
+    }
 
     // Secure hierarchical scoping
     const scopedWhere = await buildCrmScopeFilter(user, {
@@ -163,13 +203,17 @@ export class OpportunityService {
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
-    return {
+    const result = {
       opportunities,
       total,
       page,
       limit,
       totalPages,
     };
+
+    opportunityQueryCache.set(cacheKey, { data: result, cachedAt: now });
+
+    return result;
   }
 
   /**
@@ -182,12 +226,26 @@ export class OpportunityService {
     const isExec = this.isExecutive(user);
     const empId = user.employee.id;
 
+    const metricsKey = `${orgId}:${user.id}`;
+    const cachedMetrics = metricsCache.get(metricsKey);
+    const now = Date.now();
+    if (cachedMetrics && now - cachedMetrics.cachedAt < OPP_CACHE_TTL_MS) {
+      return cachedMetrics.data;
+    }
+
     const where: any = { organizationId: orgId };
     if (!isExec && user.roleCode !== "DEPARTMENT_HEAD") {
       where.ownerId = empId;
     }
 
-    const deals = await db.opportunity.findMany({ where });
+    const deals = await db.opportunity.findMany({
+      where,
+      select: {
+        value: true,
+        stage: true,
+        probability: true,
+      },
+    });
 
     let openCount = 0;
     let openValue = 0;
@@ -225,7 +283,7 @@ export class OpportunityService {
     const totalClosed = wonCount + lostCount;
     const winRate = totalClosed > 0 ? Math.round((wonCount / totalClosed) * 100) : 0;
 
-    return {
+    const metricsResult = {
       openCount,
       openValue,
       pipelineValue: openValue,
@@ -236,6 +294,10 @@ export class OpportunityService {
       winRate,
       stageBreakdown,
     };
+
+    metricsCache.set(metricsKey, { data: metricsResult, cachedAt: now });
+
+    return metricsResult;
   }
 
   /**
@@ -303,6 +365,7 @@ export class OpportunityService {
       }
     }
 
+    invalidateOpportunityCache(orgId);
     return opportunity;
   }
 
@@ -415,6 +478,7 @@ export class OpportunityService {
       console.error("[Notification Warning]: Failed to publish opportunity stage notification:", notifErr);
     }
 
+    invalidateOpportunityCache(opp.organizationId);
     return updated;
   }
 
@@ -528,6 +592,7 @@ export class OpportunityService {
       metadata: { source: "opportunity_service" },
     });
 
+    invalidateOpportunityCache(existing.organizationId);
     return updated;
   }
 
@@ -557,6 +622,7 @@ export class OpportunityService {
       metadata: { source: "opportunity_service" },
     });
 
+    invalidateOpportunityCache(existing.organizationId);
     return { success: true, id: oppId };
   }
 }

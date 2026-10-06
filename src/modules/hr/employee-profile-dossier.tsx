@@ -191,6 +191,7 @@ export function EmployeeProfileDossier({
   const userRoleCode = (currentUser?.roleCode || currentUser?.role?.code || "").toUpperCase();
   const userRoleLevel = currentUser?.roleLevel ?? currentUser?.role?.level ?? 10;
   const isHrOrAdmin = ["SUPER_ADMIN", "ADMIN", "CEO", "HR"].includes(userRoleCode);
+  const canApproveAndActivate = ["ADMIN", "CEO", "HR"].includes(userRoleCode);
   const isExecutive = ["SUPER_ADMIN", "ADMIN", "CHAIRPERSON", "CEO", "COO", "CFO", "CIO", "CTO", "CMO", "CHRO", "HR", "DIRECTOR", "VP", "PRESIDENT"].includes(userRoleCode) || userRoleLevel >= 40;
 
   // Delete state
@@ -640,14 +641,14 @@ export function EmployeeProfileDossier({
             </div>
 
             {/* Approval CTA Button */}
-            {isHrOrAdmin && (
+            {(canApproveAndActivate || (isHrOrAdmin && isProfileActive)) && (
               <div>
                 {isProfileActive ? (
                   <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-950/60 px-3 py-1.5 rounded-lg border border-emerald-800/40">
                     <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0" />
                     <span>Approved by {employee.approvedBy || "HR"} ({formatDate(employee.approvedAt || employee.updatedAt)})</span>
                   </div>
-                ) : (
+                ) : canApproveAndActivate ? (
                   <Button
                     onClick={() => setApprovalModalOpen(true)}
                     className="bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-xs px-4 py-2 shadow-lg shadow-emerald-900/30 gap-1.5"
@@ -655,7 +656,7 @@ export function EmployeeProfileDossier({
                     <CheckCircle2 className="h-4 w-4" />
                     Approve & Activate Account
                   </Button>
-                )}
+                ) : null}
               </div>
             )}
           </div>

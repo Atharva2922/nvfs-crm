@@ -37,6 +37,31 @@ export interface ClientQueryFilters {
   limit?: number;
   sortBy?: string;
   sortOrder?: "asc" | "desc";
+  lite?: boolean;
+}
+
+interface CachedClientQuery {
+  data: any;
+  cachedAt: number;
+}
+const clientQueryCache = new Map<string, CachedClientQuery>();
+const CLIENT_CACHE_TTL_MS = 25 * 1000; // 25 seconds
+
+import { invalidateCrmDashboardCache } from "./crm-dashboard.service";
+
+export function invalidateClientCache(organizationId?: string) {
+  try {
+    invalidateCrmDashboardCache(organizationId);
+  } catch {}
+  if (organizationId) {
+    for (const key of clientQueryCache.keys()) {
+      if (key.startsWith(`${organizationId}:`)) {
+        clientQueryCache.delete(key);
+      }
+    }
+  } else {
+    clientQueryCache.clear();
+  }
 }
 
 export class ClientService {
@@ -55,6 +80,15 @@ export class ClientService {
    * Scoped client directory retrieval with multi-filtering, sorting, and pagination
    */
   static async getClients(user: AuthenticatedUser, filters: ClientQueryFilters = {}) {
+    const orgId = this.getOrgId(user);
+    const filterKey = JSON.stringify(filters);
+    const cacheKey = `${orgId}:${user.id}:${filterKey}`;
+    const cached = clientQueryCache.get(cacheKey);
+    const now = Date.now();
+    if (cached && now - cached.cachedAt < CLIENT_CACHE_TTL_MS) {
+      return cached.data;
+    }
+
     // Secure hierarchical scoping
     const scopedWhere = await buildCrmScopeFilter(user, {
       entityOwnerField: "ownerId",
@@ -109,6 +143,30 @@ export class ClientService {
       orderBy.push({ createdAt: "desc" });
     }
 
+    if (filters.lite) {
+      const liteClients = await db.client.findMany({
+        where,
+        take: limit,
+        orderBy: [{ name: "asc" }],
+        select: {
+          id: true,
+          name: true,
+          code: true,
+          tier: true,
+          status: true,
+        },
+      });
+      const result = {
+        clients: liteClients,
+        total: liteClients.length,
+        page: 1,
+        limit,
+        totalPages: 1,
+      };
+      clientQueryCache.set(cacheKey, { data: result, cachedAt: now });
+      return result;
+    }
+
     const [total, clients] = await Promise.all([
       db.client.count({ where }),
       db.client.findMany({
@@ -140,13 +198,17 @@ export class ClientService {
 
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
-    return {
+    const result = {
       clients,
       total,
       page,
       limit,
       totalPages,
     };
+
+    clientQueryCache.set(cacheKey, { data: result, cachedAt: now });
+
+    return result;
   }
 
   /**
@@ -350,6 +412,7 @@ export class ClientService {
       }
     }
 
+    invalidateClientCache(orgId);
     return client;
   }
 
@@ -367,6 +430,8 @@ export class ClientService {
       where: { id: clientId },
       data,
     });
+
+    invalidateClientCache(userOrgId);
 
     await AuditService.logMutation({
       actorId: user.id,

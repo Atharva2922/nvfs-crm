@@ -29,6 +29,9 @@ import {
   ArrowDown,
   RotateCcw
 } from "lucide-react";
+import { fetchCrmEmployees, fetchCrmClients } from "@/lib/crm-cache";
+import { CrmTableSkeleton } from "@/components/crm/crm-skeletons";
+import { CtaButton } from "@/components/ui/cta-button";
 
 interface Opportunity {
   id: string;
@@ -191,26 +194,19 @@ export default function OpportunitiesPage() {
   // Initial metadata loading
   const fetchMetadata = async () => {
     try {
-      const [metricsRes, clientsRes, empRes] = await Promise.all([
+      const [metricsRes, clientList, empList] = await Promise.all([
         fetch("/api/crm/opportunities/metrics"),
-        fetch("/api/crm/clients?limit=200"),
-        fetch("/api/employees?limit=100")
+        fetchCrmClients(),
+        fetchCrmEmployees()
       ]);
 
       if (metricsRes.ok) {
         const json = await metricsRes.json();
         setMetrics(json.data || json);
       }
-      if (clientsRes.ok) {
-        const json = await clientsRes.json();
-        const clientList = json.data?.clients || [];
-        setClients(clientList);
-        if (clientList.length > 0 && !clientId) setClientId(clientList[0].id);
-      }
-      if (empRes.ok) {
-        const json = await empRes.json();
-        setEmployees(json.data?.employees || []);
-      }
+      setClients(clientList);
+      if (clientList.length > 0 && !clientId) setClientId(clientList[0].id);
+      setEmployees(empList);
     } catch (err) {
       console.error("Failed to load metadata:", err);
     }
@@ -666,8 +662,44 @@ export default function OpportunitiesPage() {
       </div>
 
       {/* Main View: Kanban or Table */}
-      {loading ? (
-        <div className="p-16 text-center text-zinc-400">Loading pipeline deals...</div>
+      {loading && opportunities.length === 0 ? (
+        viewMode === "table" ? (
+          <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
+            <table className="min-w-full divide-y divide-zinc-800 text-left text-sm">
+              <thead className="bg-zinc-950/60 text-xs uppercase font-semibold tracking-wider text-zinc-400">
+                <tr>
+                  <th className="px-6 py-4">Opportunity</th>
+                  <th className="px-6 py-4">Client</th>
+                  <th className="px-6 py-4">Value</th>
+                  <th className="px-6 py-4">Stage</th>
+                  <th className="px-6 py-4">Probability</th>
+                  <th className="px-6 py-4">Close Date</th>
+                  <th className="px-6 py-4">Owner</th>
+                  <th className="px-6 py-4 text-right">Action</th>
+                </tr>
+              </thead>
+              <CrmTableSkeleton columns={8} rows={8} />
+            </table>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 items-start">
+            {STAGES.map((col) => (
+              <div
+                key={col.key}
+                className="flex flex-col rounded-xl border border-zinc-800/80 bg-zinc-900/40 p-3 min-h-[450px]"
+              >
+                <div className="flex items-center justify-between pb-3 border-b border-zinc-800 mb-3">
+                  <div className="h-4 w-24 bg-slate-800 rounded animate-pulse" />
+                  <div className="h-4 w-8 bg-slate-800 rounded animate-pulse" />
+                </div>
+                <div className="space-y-3">
+                  <div className="h-28 rounded-lg bg-zinc-800/50 animate-pulse p-4" />
+                  <div className="h-28 rounded-lg bg-zinc-800/50 animate-pulse p-4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       ) : opportunities.length === 0 ? (
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-12 text-center">
           <IndianRupee className="mx-auto h-8 w-8 text-zinc-600 mb-3" />
@@ -1054,13 +1086,14 @@ export default function OpportunitiesPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <CtaButton
                   type="submit"
-                  disabled={isPending}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 transition-colors shadow-md disabled:opacity-50"
+                  loading={isPending}
+                  minWidth="min-w-[130px]"
+                  className="bg-indigo-600 hover:bg-indigo-500"
                 >
-                  {isPending ? "Creating..." : "Create Deal"}
-                </button>
+                  Create Deal
+                </CtaButton>
               </div>
             </form>
           </div>
@@ -1181,12 +1214,13 @@ export default function OpportunitiesPage() {
                   >
                     Cancel
                   </button>
-                  <button
+                  <CtaButton
                     type="submit"
-                    className="rounded-lg bg-indigo-600 px-4 py-2 font-semibold text-white hover:bg-indigo-500 transition-colors shadow-md"
+                    minWidth="min-w-[130px]"
+                    className="bg-indigo-600 hover:bg-indigo-500"
                   >
                     Save Changes
-                  </button>
+                  </CtaButton>
                 </div>
               </div>
             </form>

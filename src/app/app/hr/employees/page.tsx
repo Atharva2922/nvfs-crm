@@ -133,6 +133,7 @@ export default function EmployeeDirectoryPage() {
 
   const userRoleCode = (currentUser?.roleCode || "").toUpperCase();
   const userRoleLevel = currentUser?.roleLevel ?? 10;
+  const isSuperAdmin = userRoleCode === "SUPER_ADMIN";
   const isExecutive = LEADERSHIP_ROLE_CODES.has(userRoleCode) || userRoleLevel >= 40;
 
   const handleConfirmDelete = async () => {
@@ -364,15 +365,17 @@ export default function EmployeeDirectoryPage() {
               <Network className="h-3.5 w-3.5 text-blue-400" />
               <span>Org Hierarchy Tree</span>
             </Link>
-            <Button
-              variant="primary"
-              size="sm"
-              onClick={() => setIsDrawerOpen(true)}
-              className="gap-1.5"
-            >
-              <UserPlus className="h-3.5 w-3.5" />
-              <span>Add Employee</span>
-            </Button>
+            {!isSuperAdmin && (
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={() => setIsDrawerOpen(true)}
+                className="gap-1.5"
+              >
+                <UserPlus className="h-3.5 w-3.5" />
+                <span>Add Employee</span>
+              </Button>
+            )}
           </div>
         }
       />

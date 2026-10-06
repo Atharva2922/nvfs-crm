@@ -30,6 +30,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { Pagination } from "@/components/ui/pagination";
 import { ArrowUpDown, ChevronUp, ChevronDown, RotateCcw } from "lucide-react";
+import { fetchCrmEmployees, fetchCrmClients } from "@/lib/crm-cache";
+import { CrmTableSkeleton } from "@/components/crm/crm-skeletons";
+import { CtaButton } from "@/components/ui/cta-button";
 
 interface LeadItem {
   id: string;
@@ -81,7 +84,7 @@ interface EmployeeOption {
   id: string;
   firstName: string;
   lastName: string;
-  designation: string;
+  designation?: string | null;
 }
 
 export default function LeadsPage() {
@@ -196,21 +199,15 @@ export default function LeadsPage() {
 
   const fetchClients = async () => {
     try {
-      const res = await fetch("/api/crm/clients?limit=100");
-      const data = await res.json();
-      if (data.success) {
-        setClients(data.data.clients || []);
-      }
+      const data = await fetchCrmClients();
+      setClients(data);
     } catch {}
   };
 
   const fetchEmployees = async () => {
     try {
-      const res = await fetch("/api/employees?limit=100");
-      const data = await res.json();
-      if (data.success) {
-        setEmployees(data.data.employees || []);
-      }
+      const data = await fetchCrmEmployees();
+      setEmployees(data);
     } catch {}
   };
 
@@ -709,8 +706,20 @@ export default function LeadsPage() {
 
       {/* Leads Table */}
       <div className="rounded-xl border border-slate-800 bg-[#0c1322] overflow-hidden">
-        {loading ? (
-          <div className="p-16 text-center text-xs text-slate-500">Loading sales prospects...</div>
+        {loading && leads.length === 0 ? (
+          <table className="w-full text-left text-xs">
+            <thead className="border-b border-slate-800 bg-[#0f172a] text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+              <tr>
+                <th className="px-4 py-3">Prospect Contact</th>
+                <th className="px-4 py-3">Company Name</th>
+                <th className="px-4 py-3">Stage</th>
+                <th className="px-4 py-3">Est. Value</th>
+                <th className="px-4 py-3">Owner</th>
+                <th className="px-4 py-3 text-right">Actions</th>
+              </tr>
+            </thead>
+            <CrmTableSkeleton columns={6} rows={limit} />
+          </table>
         ) : leads.length === 0 ? (
           <div className="p-16 text-center text-xs">
             <p className="text-slate-300 font-medium text-sm">
@@ -1236,13 +1245,14 @@ export default function LeadsPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <CtaButton
                   type="submit"
-                  disabled={isUpdating}
-                  className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50"
+                  loading={isUpdating}
+                  minWidth="min-w-[130px]"
+                  className="bg-blue-600 hover:bg-blue-500"
                 >
-                  {isUpdating ? "Saving Changes..." : "Save Changes"}
-                </button>
+                  Save Changes
+                </CtaButton>
               </div>
             </form>
           </div>
@@ -1401,13 +1411,14 @@ export default function LeadsPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <CtaButton
                   type="submit"
-                  disabled={isCapturing}
-                  className="rounded-lg bg-blue-600 px-4 py-2 font-semibold text-white hover:bg-blue-500 transition-colors shadow-md disabled:opacity-50"
+                  loading={isCapturing}
+                  minWidth="min-w-[130px]"
+                  className="bg-blue-600 hover:bg-blue-500"
                 >
-                  {isCapturing ? "Saving..." : "Save Prospect"}
-                </button>
+                  Save Prospect
+                </CtaButton>
               </div>
             </form>
           </div>
@@ -1510,13 +1521,14 @@ export default function LeadsPage() {
                 >
                   Cancel
                 </button>
-                <button
+                <CtaButton
                   type="submit"
-                  disabled={isConverting}
-                  className="rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white hover:bg-emerald-500 transition-colors shadow-md disabled:opacity-50"
+                  loading={isConverting}
+                  minWidth="min-w-[160px]"
+                  className="bg-emerald-600 hover:bg-emerald-500"
                 >
-                  {isConverting ? "Converting..." : "Complete Conversion"}
-                </button>
+                  Complete Conversion
+                </CtaButton>
               </div>
             </form>
           </div>

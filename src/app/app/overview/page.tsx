@@ -93,9 +93,10 @@ export default async function AppOverviewPage() {
         companyCode={companyCode}
         summary={telemetry?.employeesSummary}
         canAddEmployee={
-          (user.roleLevel ?? 0) >= 30 ||
-          ["HR", "ADMIN", "SUPER_ADMIN", "CEO"].includes(user.roleCode) ||
-          user.permissions.includes("employees.employee.create")
+          user.roleCode !== "SUPER_ADMIN" &&
+          ((user.roleLevel ?? 0) >= 30 ||
+            ["HR", "ADMIN", "CEO"].includes(user.roleCode) ||
+            user.permissions.includes("employees.employee.create"))
         }
       />
 
